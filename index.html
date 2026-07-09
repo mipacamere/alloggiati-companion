@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alloggiati Companion</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏨 Alloggiati Companion</h1>
+            <p class="subtitle">Converti i dati OCR nel formato per il portale della Polizia di Stato</p>
+        </header>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Caricamento tabelle in corso...</p>
+        </div>
+
+        <div id="app" class="hidden">
+            <!-- Drop Zone -->
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-content">
+                    <div class="drop-icon">📁</div>
+                    <h3>Carica file JSON dalla PWA</h3>
+                    <p>Trascina qui i file o clicca per selezionarli</p>
+                    <input type="file" id="fileInput" accept=".json" multiple>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats" id="stats" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalGuests">0</div>
+                    <div class="stat-label">Totale ospiti</div>
+                </div>
+                <div class="stat-card valid">
+                    <div class="stat-value" id="validGuests">0</div>
+                    <div class="stat-label">Record validi</div>
+                </div>
+                <div class="stat-card error">
+                    <div class="stat-value" id="errorGuests">0</div>
+                    <div class="stat-label">Con errori</div>
+                </div>
+            </div>
+
+            <!-- Guest List -->
+            <div class="guest-list" id="guestList"></div>
+
+            <!-- Generate Button -->
+            <button class="btn-generate" id="generateBtn" style="display: none;">
+                📄 Genera File TXT
+            </button>
+        </div>
+
+        <!-- Edit Modal -->
+        <div class="modal" id="editModal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Modifica Ospite</h2>
+                    <button class="close-btn" id="closeModal">&times;</button>
+                </div>
+                <form id="editForm">
+                    <div class="form-section">
+                        <h3>Dati Personali</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Cognome *</label>
+                                <input type="text" id="editLastName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Nome *</label>
+                                <input type="text" id="editFirstName" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Sesso *</label>
+                                <select id="editGender" required>
+                                    <option value="M">Maschio</option>
+                                    <option value="F">Femmina</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Data di Nascita *</label>
+                                <input type="text" id="editBirthDate" placeholder="gg/mm/aaaa" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Luogo di Nascita *</label>
+                                <input type="text" id="editBirthPlace" list="comuniList" required>
+                                <datalist id="comuniList"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label>Cittadinanza *</label>
+                                <input type="text" id="editNationality" list="statiList" required>
+                                <datalist id="statiList"></datalist>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Soggiorno</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Data Arrivo *</label>
+                                <input type="text" id="editArrivalDate" placeholder="gg/mm/aaaa" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Data Partenza *</label>
+                                <input type="text" id="editDepartureDate" placeholder="gg/mm/aaaa" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo Alloggiato *</label>
+                                <select id="editGuestType" required>
+                                    <option value="OSPITE SINGOLO">Ospite Singolo (16)</option>
+                                    <option value="CAPO FAMIGLIA">Capo Famiglia (17)</option>
+                                    <option value="CAPO GRUPPO">Capo Gruppo (18)</option>
+                                    <option value="FAMILIARE">Familiare (19)</option>
+                                    <option value="MEMBRO GRUPPO">Membro Gruppo (20)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Documento</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tipo Documento *</label>
+                                <input type="text" id="editDocType" list="documentiList" required>
+                                <datalist id="documentiList"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label>Numero Documento *</label>
+                                <input type="text" id="editDocNumber" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Luogo Rilascio</label>
+                                <input type="text" id="editDocPlace" list="comuniList">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-cancel" id="cancelEdit">Annulla</button>
+                        <button type="submit" class="btn-save">Salva</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div class="toast" id="toast"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
