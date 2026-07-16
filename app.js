@@ -7,7 +7,7 @@ const STRUTTURE = {
 };
 
 // Deve combaciare con APP_SHARED_TOKEN configurato su Netlify per questo sito.
-const APP_TOKEN = 'CHANGE-ME';
+const APP_TOKEN = 'alloggiati2026xyz';
 const READ_GUESTS_URL = '/api/read-guests';
 const TEST_URL = '/api/test-schedine';
 const SEND_URL = '/api/send-schedine';
