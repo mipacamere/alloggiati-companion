@@ -1,14 +1,19 @@
 // ============================================================
-// CONFIGURAZIONE STRUTTURE
+// CONFIGURAZIONE
 // ============================================================
 const STRUTTURE = {
     'ME001066': 'Via Nazionale',
     'ME006995': 'MiPA'
 };
 
+// Deve combaciare con APP_SHARED_TOKEN configurato su Netlify per questo sito.
+const APP_TOKEN = 'CHANGE-ME';
+const READ_GUESTS_URL = '/api/read-guests';
+const TEST_URL = '/api/test-schedine';
+const SEND_URL = '/api/send-schedine';
+
 // Stato dell'applicazione
 const state = {
-    allGuests: [],
     filteredGuests: [],
     lookup: {
         comuni: [],
@@ -24,30 +29,16 @@ const state = {
 document.addEventListener('DOMContentLoaded', async () => {
     await loadLookupTables();
     setupEventListeners();
-    loadConfig();
 });
 
-function loadConfig() {
-    const savedUrl = localStorage.getItem('sheetsUrl');
-    if (savedUrl) {
-        document.getElementById('sheets-url').value = savedUrl;
-    }
-}
-
-function saveConfig() {
-    const url = document.getElementById('sheets-url').value.trim();
-    localStorage.setItem('sheetsUrl', url);
-}
-
 // ============================================================
-// CARICAMENTO TABELLE DI LOOKUP (CSV)
+// CARICAMENTO TABELLE DI LOOKUP (CSV) — invariato, restano locali
 // ============================================================
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    
+
     return lines.slice(1).map(line => {
-        // Gestione virgolette nei CSV
         const values = [];
         let current = '';
         let inQuotes = false;
@@ -63,7 +54,7 @@ function parseCSV(text) {
             }
         }
         values.push(current.trim());
-        
+
         const obj = {};
         headers.forEach((header, index) => {
             obj[header] = values[index] || '';
@@ -98,12 +89,13 @@ async function loadLookupTables() {
 // EVENT LISTENERS
 // ============================================================
 function setupEventListeners() {
-    document.getElementById('btn-load').addEventListener('click', loadFromGoogleSheets);
+    document.getElementById('btn-load').addEventListener('click', loadFromSheet);
     document.getElementById('btn-generate').addEventListener('click', generateAndDownloadTXT);
+    document.getElementById('btn-test').addEventListener('click', testWithQuestura);
+    document.getElementById('btn-send').addEventListener('click', sendToQuestura);
     document.getElementById('btn-clear').addEventListener('click', clearAll);
     document.getElementById('btn-select-all').addEventListener('click', selectAll);
     document.getElementById('btn-deselect-all').addEventListener('click', deselectAll);
-    document.getElementById('sheets-url').addEventListener('change', saveConfig);
 }
 
 // ============================================================
@@ -125,14 +117,6 @@ function parseDate(str) {
     return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
 }
 
-function calculateNights(arrival, departure) {
-    const arr = parseDate(arrival);
-    const dep = parseDate(departure);
-    if (!arr || !dep) return 1;
-    const diff = Math.ceil((dep - arr) / (1000 * 60 * 60 * 24));
-    return diff > 0 ? diff : 1;
-}
-
 // ============================================================
 // LOOKUP FUNCTIONS
 // ============================================================
@@ -143,10 +127,9 @@ function findInTable(table, searchField, value, dateRef = null) {
         const itemVal = String(item[searchField] || '').trim().toUpperCase();
         return itemVal === norm;
     });
-    
+
     if (candidates.length === 0) return null;
-    
-    // Se c'è una data di riferimento, gestisci validità storica
+
     if (dateRef && candidates.length > 1) {
         const refDate = parseDate(dateRef);
         if (refDate) {
@@ -158,9 +141,25 @@ function findInTable(table, searchField, value, dateRef = null) {
             }
         }
     }
-    
+
     // Restituisci il primo attivo o l'ultimo disponibile
     return candidates.find(c => !c.DataFineVal && !c.dataFineVal) || candidates[0];
+}
+
+// Cerca un comune per nome, con preferenza per la combinazione nome+provincia (utile
+// perché diversi comuni italiani condividono lo stesso nome in province diverse).
+function findComune(nome, provincia) {
+    if (!nome) return null;
+    const normNome = String(nome).trim().toUpperCase();
+    const normProv = String(provincia || '').trim().toUpperCase();
+    if (normProv) {
+        const withProv = state.lookup.comuni.find(c =>
+            String(c.Descrizione || '').trim().toUpperCase() === normNome &&
+            String(c.Provincia || '').trim().toUpperCase() === normProv
+        );
+        if (withProv) return withProv;
+    }
+    return findInTable(state.lookup.comuni, 'Descrizione', nome);
 }
 
 function pad(str, len) {
@@ -168,58 +167,46 @@ function pad(str, len) {
 }
 
 // ============================================================
-// CARICAMENTO DATI DA GOOGLE SHEETS
+// CARICAMENTO DATI (Netlify Function → Google Sheets API)
 // ============================================================
-async function loadFromGoogleSheets() {
-    const sheetsUrl = document.getElementById('sheets-url').value.trim();
+async function loadFromSheet() {
     const dateFilter = document.getElementById('date-filter').value;
     const structureFilter = document.getElementById('structure-filter').value;
 
-    if (!sheetsUrl) {
-        showStatus(' Inserisci l\'URL di Google Sheets', 'error');
-        return;
-    }
-
     if (!structureFilter) {
-        showStatus(' Seleziona una struttura', 'error');
+        showStatus('⚠️ Seleziona una struttura', 'error');
         return;
     }
 
-    showStatus(' Caricamento dati...', 'success');
+    const dataArrivo = dateFilter === 'today' ? getDateFormatted(0) : getDateFormatted(-1);
+    showStatus('⏳ Caricamento dati dal foglio…', 'success');
+    clearQuesturaResult();
 
     try {
-        const response = await fetch(sheetsUrl);
-        const allData = await response.json();
+        const res = await fetch(READ_GUESTS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
+            body: JSON.stringify({ struttura_id: structureFilter, data_arrivo: dataArrivo }),
+        });
+        const data = await res.json().catch(() => null);
 
-        if (!Array.isArray(allData) || allData.length === 0) {
-            showStatus('⚠️ Nessun dato trovato nel foglio', 'error');
+        if (!res.ok || !data || !data.ok) {
+            const errMsg = (data && (data.error + (data.detail ? ' — ' + data.detail : ''))) || `HTTP ${res.status}`;
+            showStatus('❌ ' + errMsg, 'error');
             return;
         }
 
-        console.log(`📊 Dati ricevuti: ${allData.length} righe`);
-        console.log('Primo record:', allData[0]);
-
-        // Filtra per data e struttura
-        const targetDate = dateFilter === 'today' ? getDateFormatted(0) : getDateFormatted(-1);
-        
-        state.filteredGuests = allData
-            .filter(guest => {
-                const guestDate = String(guest.data_scansione || '').trim();
-                const guestStructure = String(guest.struttura_id || '').trim();
-                const matchesDate = guestDate === targetDate;
-                const matchesStructure = guestStructure === structureFilter;
-                return matchesDate && matchesStructure;
-            })
-            .map((guest, index) => ({
-                ...guest,
-                id: `guest-${index}`,
-                selected: true
-            }));
-
-        if (state.filteredGuests.length === 0) {
+        if (data.guests.length === 0) {
             showStatus(`⚠️ Nessun ospite trovato per ${dateFilter === 'today' ? 'oggi' : 'ieri'} nella struttura selezionata`, 'error');
+            document.getElementById('guest-list-section').classList.add('hidden');
             return;
         }
+
+        state.filteredGuests = data.guests.map((guest, index) => ({
+            ...guest,
+            uiId: `guest-${index}`,
+            selected: true
+        }));
 
         document.getElementById('guest-list-section').classList.remove('hidden');
         renderGuestList();
@@ -228,7 +215,7 @@ async function loadFromGoogleSheets() {
 
     } catch (error) {
         console.error('Errore caricamento:', error);
-        showStatus(' Errore nel caricamento dei dati. Verifica l\'URL.', 'error');
+        showStatus('❌ Errore di rete nel caricamento dei dati.', 'error');
     }
 }
 
@@ -242,12 +229,12 @@ function renderGuestList() {
     state.filteredGuests.forEach((guest, index) => {
         const card = document.createElement('div');
         card.className = `guest-card ${guest.selected ? '' : 'excluded'}`;
-        
+
         const tipoAllog = String(guest.tipo_alloggiato || '-');
         const dataArrivo = String(guest.data_arrivo || '-');
         const cognome = String(guest.cognome || '-');
         const nome = String(guest.nome || '-');
-        
+
         card.innerHTML = `
             <input type="checkbox" ${guest.selected ? 'checked' : ''} 
                    onchange="toggleGuest(${index})" 
@@ -255,11 +242,11 @@ function renderGuestList() {
             <div class="guest-info">
                 <div class="guest-name">${cognome} ${nome}</div>
                 <div class="guest-meta">
-                    ${tipoAllog} • Arrivo: ${dataArrivo}
+                    ${tipoAllog} • Arrivo: ${dataArrivo} • Permanenza: ${guest.permanenza || '-'} gg
                 </div>
             </div>
         `;
-        
+
         list.appendChild(card);
     });
 }
@@ -292,12 +279,15 @@ function updateStats() {
     document.getElementById('stat-selected').textContent = selected;
     document.getElementById('stat-excluded').textContent = excluded;
     document.getElementById('btn-generate').disabled = selected === 0;
+    document.getElementById('btn-test').disabled = selected === 0;
+    document.getElementById('btn-send').disabled = selected === 0;
 }
 
 function clearAll() {
     state.filteredGuests = [];
     document.getElementById('guest-list-section').classList.add('hidden');
     document.getElementById('structure-filter').value = '';
+    clearQuesturaResult();
     updateStats();
 }
 
@@ -306,111 +296,107 @@ function showStatus(message, type) {
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
     statusEl.classList.remove('hidden');
-    
+
     setTimeout(() => {
         statusEl.classList.add('hidden');
     }, 5000);
 }
 
+function clearQuesturaResult() {
+    document.getElementById('questura-result').innerHTML = '';
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // ============================================================
 // CONVERSIONE IN RECORD POSIZIONALE (168 caratteri)
-// Secondo tracciato PDF Manuale Alloggiati Web
+// Secondo tracciato PDF Manuale Alloggiati Web — sezione 12
 // ============================================================
-function convertToRecord(guest) {
-    // Array di 168 caratteri, inizializzato con spazi
+function convertToRecord(guest, warnings) {
     const rec = new Array(168).fill(' ');
-    
+    const cognome = String(guest.cognome || '').toUpperCase().trim();
+    const nome = String(guest.nome || '').toUpperCase().trim();
+    const rowLabel = `${cognome} ${nome}`;
+
     const tipoAlloggiatoDesc = String(guest.tipo_alloggiato || '').trim();
     const isFamilyMember = ['FAMILIARE', 'MEMBRO GRUPPO'].includes(tipoAlloggiatoDesc.toUpperCase());
-    
-    // 1. TIPO ALLOGGIATO (posizioni 0-1, 2 caratteri)
+
+    // 1. TIPO ALLOGGIATO (posizioni 0-1)
     const tipo = findInTable(state.lookup.tipoAlloggiato, 'Descrizione', tipoAlloggiatoDesc);
     if (tipo) {
         rec.splice(0, 2, ...pad(tipo.Codice, 2));
     } else {
-        console.warn(`Tipo alloggiato non trovato: "${tipoAlloggiatoDesc}"`);
+        warnings.push(`${rowLabel}: tipo alloggiato "${tipoAlloggiatoDesc}" non riconosciuto`);
     }
 
-    // 2. DATA ARRIVO (posizioni 2-11, 10 caratteri) - formato gg/mm/aaaa
-    const dataArrivo = String(guest.data_arrivo || '').trim();
-    rec.splice(2, 10, ...pad(dataArrivo, 10));
+    // 2. DATA ARRIVO (posizioni 2-11)
+    rec.splice(2, 10, ...pad(String(guest.data_arrivo || '').trim(), 10));
 
-    // 3. GIORNI PERMANENZA (posizioni 12-13, 2 caratteri)
-    const nights = calculateNights(guest.data_arrivo, guest.data_partenza);
-    const nightsStr = String(Math.min(nights, 30)).padStart(2, '0');
-    rec.splice(12, 2, ...nightsStr);
+    // 3. GIORNI PERMANENZA (posizioni 12-13) — già calcolati e salvati dall'app MiPA Companion
+    const nights = Math.max(1, Math.min(30, parseInt(guest.permanenza, 10) || 1));
+    rec.splice(12, 2, ...String(nights).padStart(2, '0'));
 
-    // 4. COGNOME (posizioni 14-63, 50 caratteri)
-    const cognome = String(guest.cognome || '').toUpperCase().trim();
+    // 4. COGNOME (posizioni 14-63)
     rec.splice(14, 50, ...pad(cognome, 50));
 
-    // 5. NOME (posizioni 64-93, 30 caratteri)
-    const nome = String(guest.nome || '').toUpperCase().trim();
+    // 5. NOME (posizioni 64-93)
     rec.splice(64, 30, ...pad(nome, 30));
 
-    // 6. SESSO (posizione 94, 1 carattere) - 1=M, 2=F
+    // 6. SESSO (posizione 94) - 1=M, 2=F
     const sesso = String(guest.sesso || '').toUpperCase().trim();
-    rec[94] = sesso === 'M' ? '1' : '2';
+    rec[94] = sesso === 'F' ? '2' : '1';
 
-    // 7. DATA NASCITA (posizioni 95-104, 10 caratteri) - formato gg/mm/aaaa
+    // 7. DATA NASCITA (posizioni 95-104)
     const dataNascita = String(guest.data_nascita || '').trim();
     rec.splice(95, 10, ...pad(dataNascita, 10));
 
-    // 8-10. LUOGO NASCITA (Comune + Provincia + Stato)
-    const luogoNascita = String(guest.luogo_nascita || '').trim();
-    const cittadinanza = String(guest.cittadinanza || '').trim();
-    
-    // Cerca prima come comune italiano
-    const comune = findInTable(state.lookup.comuni, 'Descrizione', luogoNascita, dataNascita);
-    
-    if (comune) {
-        // Nato in Italia
-        rec.splice(105, 9, ...pad(comune.Codice, 9));
-        rec.splice(114, 2, ...pad(comune.Provincia, 2));
-        // Stato nascita = Italia
-        const statoItalia = findInTable(state.lookup.stati, 'Descrizione', 'ITALIA');
-        if (statoItalia) {
-            rec.splice(116, 9, ...pad(statoItalia.Codice, 9));
-        }
-    } else {
-        // Nato all'estero: 9 spazi + 2 spazi + codice stato
-        rec.splice(105, 9, ...' '.repeat(9));
-        rec.splice(114, 2, ...' '.repeat(2));
-        const statoNascita = findInTable(state.lookup.stati, 'Descrizione', luogoNascita, dataNascita);
-        if (statoNascita) {
-            rec.splice(116, 9, ...pad(statoNascita.Codice, 9));
+    // 8-10. COMUNE / PROVINCIA / STATO NASCITA — tre campi separati, come scritti
+    // dall'app MiPA Companion (non più un unico "luogo_nascita" da indovinare).
+    const statoNascitaDesc = String(guest.stato_nascita || '').trim();
+    const statoNascita = findInTable(state.lookup.stati, 'Descrizione', statoNascitaDesc);
+    if (!statoNascita) warnings.push(`${rowLabel}: stato di nascita "${statoNascitaDesc}" non riconosciuto`);
+    const isItalia = statoNascita && statoNascita.Codice === '100000100';
+
+    if (isItalia) {
+        const comune = findComune(guest.comune_nascita, guest.provincia_nascita, dataNascita);
+        if (comune) {
+            rec.splice(105, 9, ...pad(comune.Codice, 9));
         } else {
-            console.warn(`Stato di nascita non trovato: "${luogoNascita}"`);
+            warnings.push(`${rowLabel}: comune di nascita "${guest.comune_nascita || ''}" non riconosciuto`);
         }
+        rec.splice(114, 2, ...pad(String(guest.provincia_nascita || '').toUpperCase(), 2));
+    }
+    if (statoNascita) {
+        rec.splice(116, 9, ...pad(statoNascita.Codice, 9));
     }
 
-    // 11. CITTADINANZA (posizioni 125-133, 9 caratteri)
-    const statoCittadinanza = findInTable(state.lookup.stati, 'Descrizione', cittadinanza);
-    if (statoCittadinanza) {
-        rec.splice(125, 9, ...pad(statoCittadinanza.Codice, 9));
+    // 11. CITTADINANZA (posizioni 125-133)
+    const cittadinanzaDesc = String(guest.cittadinanza || '').trim();
+    const cittadinanza = findInTable(state.lookup.stati, 'Descrizione', cittadinanzaDesc);
+    if (cittadinanza) {
+        rec.splice(125, 9, ...pad(cittadinanza.Codice, 9));
     } else {
-        console.warn(`Cittadinanza non trovata: "${cittadinanza}"`);
+        warnings.push(`${rowLabel}: cittadinanza "${cittadinanzaDesc}" non riconosciuta`);
     }
 
-    // 12-14. DOCUMENTO (solo per ospiti singoli, capi famiglia/gruppo)
+    // 12-14. DOCUMENTO (solo per ospite singolo/capofamiglia/capogruppo)
     if (!isFamilyMember) {
-        // Tipo Documento (posizioni 134-138, 5 caratteri)
-        const tipoDoc = String(guest.tipo_documento || '').trim();
-        const doc = findInTable(state.lookup.documenti, 'Descrizione', tipoDoc);
+        const tipoDocDesc = String(guest.tipo_documento || '').trim();
+        const doc = findInTable(state.lookup.documenti, 'Descrizione', tipoDocDesc);
         if (doc) {
             rec.splice(134, 5, ...pad(doc.Codice, 5));
         } else {
-            console.warn(`Tipo documento non trovato: "${tipoDoc}"`);
+            warnings.push(`${rowLabel}: tipo documento "${tipoDocDesc}" non riconosciuto`);
         }
-        
-        // Numero Documento (posizioni 139-158, 20 caratteri)
+
         const numDoc = String(guest.numero_documento || '').toUpperCase().trim();
         rec.splice(139, 20, ...pad(numDoc, 20));
-        
-        // Luogo Rilascio (posizioni 159-167, 9 caratteri)
+
         const luogoRilascio = String(guest.luogo_rilascio || '').trim();
         if (luogoRilascio) {
-            const luogoComune = findInTable(state.lookup.comuni, 'Descrizione', luogoRilascio);
+            const luogoComune = findComune(luogoRilascio, '');
             if (luogoComune) {
                 rec.splice(159, 9, ...pad(luogoComune.Codice, 9));
             } else {
@@ -418,57 +404,162 @@ function convertToRecord(guest) {
                 if (luogoStato) {
                     rec.splice(159, 9, ...pad(luogoStato.Codice, 9));
                 } else {
-                    console.warn(`Luogo rilascio non trovato: "${luogoRilascio}"`);
+                    warnings.push(`${rowLabel}: luogo di rilascio documento "${luogoRilascio}" non riconosciuto`);
                 }
             }
+        } else {
+            warnings.push(`${rowLabel}: luogo di rilascio documento mancante`);
         }
-    } else {
-        // Per familiari/membri gruppo: 34 spazi bianchi (posizioni 134-167)
-        rec.splice(134, 34, ...' '.repeat(34));
     }
+    // per familiari/membri gruppo le posizioni 134-167 restano spazi bianchi (già inizializzate così)
 
-    return rec.join('');
+    const line = rec.join('');
+    if (line.length !== 168) warnings.push(`${rowLabel}: riga di lunghezza inattesa (${line.length} invece di 168)`);
+    return line;
+}
+
+// Costruisce l'elenco di righe per gli ospiti selezionati, raccogliendo eventuali
+// avvisi di conversione (usato sia per il download sia per Test/Send).
+function buildRecordsForSelected() {
+    const selectedGuests = state.filteredGuests.filter(g => g.selected);
+    const warnings = [];
+    const records = selectedGuests.map(guest => convertToRecord(guest, warnings));
+    records.forEach((rec, idx) => {
+        if (rec.length !== 168) console.error(`Record ${idx} ha lunghezza ${rec.length} invece di 168`);
+    });
+    return { records, warnings, selectedGuests };
 }
 
 // ============================================================
 // GENERAZIONE E DOWNLOAD FILE TXT
 // ============================================================
 function generateAndDownloadTXT() {
-    const selectedGuests = state.filteredGuests.filter(g => g.selected);
-    
-    if (selectedGuests.length === 0) {
+    const { records, warnings } = buildRecordsForSelected();
+
+    if (records.length === 0) {
         showStatus('❌ Nessun ospite selezionato', 'error');
         return;
     }
 
-    // Genera i record
-    const records = selectedGuests.map(guest => convertToRecord(guest));
-    
-    // Unisci con CR+LF tranne l'ultima riga (come da PDF)
     const content = records.join('\r\n');
-    
-    // Verifica lunghezza record (debug)
-    records.forEach((rec, idx) => {
-        if (rec.length !== 168) {
-            console.error(`Record ${idx} ha lunghezza ${rec.length} invece di 168`);
-        }
-    });
-
-    // Crea il blob e scarica
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    
+
     const structureName = STRUTTURE[document.getElementById('structure-filter').value] || 'struttura';
-    const dateStr = new Date().toISOString().slice(0,10);
+    const dateStr = new Date().toISOString().slice(0, 10);
     a.download = `alloggiati_${structureName.replace(/\s+/g, '_')}_${dateStr}.txt`;
-    
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
     showStatus(`✅ File TXT generato con ${records.length} record`, 'success');
-    console.log(`📄 File generato: ${records.length} record, ${content.length} caratteri totali`);
+
+    if (warnings.length) {
+        renderQuesturaWarnings(warnings);
+    } else {
+        clearQuesturaResult();
+    }
+}
+
+function renderQuesturaWarnings(warnings) {
+    const box = document.getElementById('questura-result');
+    box.innerHTML = `<div class="q-box q-warning"><strong>Attenzione, controlla questi campi prima di caricare/inviare il file:</strong>\n${warnings.map(escapeHtml).join('\n')}</div>`;
+}
+
+// ============================================================
+// CONVALIDA (TEST) E INVIO REALE (SEND) — Web Service ufficiale
+// ============================================================
+async function testWithQuestura() {
+    const { records, warnings, selectedGuests } = buildRecordsForSelected();
+    if (records.length === 0) {
+        showStatus('❌ Nessun ospite selezionato', 'error');
+        return;
+    }
+
+    document.getElementById('btn-test').disabled = true;
+    document.getElementById('questura-result').innerHTML = '<div class="q-box">⏳ Convalida in corso con il sistema della Questura…</div>';
+
+    try {
+        const res = await fetch(TEST_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
+            body: JSON.stringify({ righe: records }),
+        });
+        const data = await res.json().catch(() => null);
+        renderEsitoQuestura(data, res.ok, warnings, selectedGuests, false);
+    } catch (err) {
+        document.getElementById('questura-result').innerHTML = `<div class="q-box q-error">Errore di rete: ${escapeHtml(err.message || String(err))}</div>`;
+    } finally {
+        document.getElementById('btn-test').disabled = false;
+    }
+}
+
+async function sendToQuestura() {
+    const { records, warnings, selectedGuests } = buildRecordsForSelected();
+    if (records.length === 0) {
+        showStatus('❌ Nessun ospite selezionato', 'error');
+        return;
+    }
+
+    const conferma = confirm(
+        `Stai per inviare REALMENTE ${records.length} schedina/e alla Questura tramite il Web Service ufficiale.\n\n` +
+        `Questa operazione non è reversibile. Hai già eseguito la Convalida (Test) e controllato che i dati siano corretti?\n\n` +
+        `Premi OK solo se sei sicuro di voler procedere con l'invio reale.`
+    );
+    if (!conferma) return;
+
+    document.getElementById('btn-send').disabled = true;
+    document.getElementById('questura-result').innerHTML = '<div class="q-box">⏳ Invio in corso alla Questura…</div>';
+
+    try {
+        const res = await fetch(SEND_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
+            body: JSON.stringify({ righe: records, confirm: true }),
+        });
+        const data = await res.json().catch(() => null);
+        renderEsitoQuestura(data, res.ok, warnings, selectedGuests, true);
+    } catch (err) {
+        document.getElementById('questura-result').innerHTML = `<div class="q-box q-error">Errore di rete: ${escapeHtml(err.message || String(err))}</div>`;
+    } finally {
+        document.getElementById('btn-send').disabled = false;
+    }
+}
+
+function renderEsitoQuestura(data, resOk, conversionWarnings, selectedGuests, wasRealSend) {
+    const box = document.getElementById('questura-result');
+    if (!resOk || !data || !data.ok) {
+        const errMsg = (data && (data.error + (data.detail ? ' — ' + data.detail : ''))) || 'Errore sconosciuto';
+        box.innerHTML = `<div class="q-box q-error">${escapeHtml(errMsg)}</div>`;
+        return;
+    }
+
+    let html = '';
+    if (conversionWarnings.length) {
+        html += `<div class="q-box q-warning"><strong>Avvisi già in fase di conversione (prima della Questura):</strong>\n${conversionWarnings.map(escapeHtml).join('\n')}</div>`;
+    }
+    if (data.topLevelError) {
+        html += `<div class="q-box q-error"><strong>Errore generale restituito dal servizio:</strong> ${escapeHtml(data.topLevelError)}</div>`;
+    }
+
+    const tutteValide = data.schedineValide === data.totaleRighe;
+    const titolo = wasRealSend ? 'INVIATE REALMENTE alla Questura' : 'valide secondo la convalida (Test, nessun invio reale)';
+    html += `<div class="q-box ${tutteValide ? 'q-success' : 'q-warning'}"><strong>${data.schedineValide} su ${data.totaleRighe} schedine ${titolo}.</strong></div>`;
+
+    if (data.perRiga && data.perRiga.length) {
+        html += '<div class="q-box"><strong>Dettaglio per ospite</strong><ul class="q-list">';
+        data.perRiga.forEach(d => {
+            const guest = selectedGuests[d.riga - 1];
+            const nome = guest ? `${guest.cognome} ${guest.nome}` : `riga ${d.riga}`;
+            const stato = d.errore ? '❌' : '✅';
+            html += `<li>${stato} ${escapeHtml(nome)}${d.errore ? ' — ' + escapeHtml(d.errore) : ''}</li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    box.innerHTML = html;
 }

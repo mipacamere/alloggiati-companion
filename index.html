@@ -16,15 +16,9 @@
         <!-- Sezione Configurazione -->
         <section id="config-section">
             <h2>⚙️ Configurazione</h2>
-            <div class="form-group">
-                <label for="sheets-url">URL Google Sheets API:</label>
-                <input type="text" id="sheets-url" placeholder="https://script.google.com/macros/s/.../exec">
-                <small>Inserisci l'URL del tuo script Apps Script</small>
-            </div>
-            
             <div class="form-row">
                 <div class="form-group">
-                    <label for="date-filter">Data documenti:</label>
+                    <label for="date-filter">Data di arrivo:</label>
                     <select id="date-filter">
                         <option value="today">Oggi</option>
                         <option value="yesterday">Ieri</option>
@@ -70,8 +64,12 @@
 
             <div class="actions">
                 <button id="btn-generate" class="btn btn-primary" disabled>📄 Genera File TXT</button>
+                <button id="btn-test" class="btn btn-secondary" disabled>🔎 Convalida con la Questura (Test)</button>
+                <button id="btn-send" class="btn btn-danger" disabled>🚨 Invia REALMENTE alla Questura</button>
                 <button id="btn-clear" class="btn btn-secondary">🗑️ Svuota Lista</button>
             </div>
+
+            <div id="questura-result"></div>
         </section>
 
         <!-- Sezione Messaggi -->

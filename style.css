@@ -31,7 +31,18 @@ h2 { margin-bottom: 1rem; color: var(--primary); font-size: 1.2rem; }
 .btn-secondary:hover { background: #5a6268; }
 .btn-small { padding: 0.5rem 1rem; font-size: 0.9rem; background: var(--bg); border: 1px solid var(--border); }
 .btn-small:hover { background: var(--border); }
+.btn-danger { background: var(--error); color: white; }
+.btn-danger:hover:not(:disabled) { background: #b02a37; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#questura-result { margin-top: 1rem; }
+.q-box { padding: 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.6; }
+.q-box.q-success { background: #d4edda; color: #155724; }
+.q-box.q-error { background: #f8d7da; color: #721c24; }
+.q-box.q-warning { background: #fff3cd; color: #856404; white-space: pre-wrap; }
+.q-list { list-style: none; padding: 0; margin: 0; }
+.q-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.q-list li:last-child { border-bottom: none; }
 
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
 .stat-card { background: var(--bg); padding: 1rem; border-radius: 8px; text-align: center; }
