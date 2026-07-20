@@ -479,6 +479,11 @@ async function testWithQuestura() {
         showStatus('❌ Nessun ospite selezionato', 'error');
         return;
     }
+    const strutturaId = document.getElementById('structure-filter').value;
+    if (!strutturaId) {
+        showStatus('⚠️ Seleziona una struttura', 'error');
+        return;
+    }
 
     document.getElementById('btn-test').disabled = true;
     document.getElementById('questura-result').innerHTML = '<div class="q-box">⏳ Convalida in corso con il sistema della Questura…</div>';
@@ -487,7 +492,7 @@ async function testWithQuestura() {
         const res = await fetch(TEST_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
-            body: JSON.stringify({ righe: records }),
+            body: JSON.stringify({ righe: records, struttura_id: strutturaId }),
         });
         const data = await res.json().catch(() => null);
         renderEsitoQuestura(data, res.ok, warnings, selectedGuests, false);
@@ -504,9 +509,16 @@ async function sendToQuestura() {
         showStatus('❌ Nessun ospite selezionato', 'error');
         return;
     }
+    const strutturaId = document.getElementById('structure-filter').value;
+    if (!strutturaId) {
+        showStatus('⚠️ Seleziona una struttura', 'error');
+        return;
+    }
+    const strutturaNome = STRUTTURE[strutturaId] || strutturaId;
 
     const conferma = confirm(
-        `Stai per inviare REALMENTE ${records.length} schedina/e alla Questura tramite il Web Service ufficiale.\n\n` +
+        `Stai per inviare REALMENTE ${records.length} schedina/e alla Questura tramite il Web Service ufficiale, ` +
+        `per la struttura "${strutturaNome}" (${strutturaId}).\n\n` +
         `Questa operazione non è reversibile. Hai già eseguito la Convalida (Test) e controllato che i dati siano corretti?\n\n` +
         `Premi OK solo se sei sicuro di voler procedere con l'invio reale.`
     );
@@ -519,7 +531,7 @@ async function sendToQuestura() {
         const res = await fetch(SEND_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
-            body: JSON.stringify({ righe: records, confirm: true }),
+            body: JSON.stringify({ righe: records, struttura_id: strutturaId, confirm: true }),
         });
         const data = await res.json().catch(() => null);
         renderEsitoQuestura(data, res.ok, warnings, selectedGuests, true);

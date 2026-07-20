@@ -29,14 +29,32 @@ L'account di servizio deve avere accesso al foglio come **Editor o Lettore** —
 condiviso con lui per MiPA Companion, va bene anche qui, non serve rifare nulla su
 Google Cloud.
 
-### Web Service Alloggiati Web (Polizia di Stato)
-- `ALLOGGIATI_USER` → il tuo nome utente sul portale
-- `ALLOGGIATI_PASSWORD` → la tua password sul portale
-- `ALLOGGIATI_WSKEY` → la chiave Web Service (menu account sul portale → "Chiave Web
-  Service" → "Genera Nuovo Codice" — una al giorno, da rigenerare ad ogni cambio password)
+### Web Service Alloggiati Web (Polizia di Stato) — una credenziale per ogni struttura
 
-⚠️ **`ALLOGGIATI_PASSWORD` è la password reale del portale ufficiale**: conservala solo
-come variabile d'ambiente su Netlify, mai nel codice.
+⚠️ **Importante**: ogni struttura ha il **proprio account** distinto sul portale
+Alloggiati Web (utente, password e chiave Web Service sono specifici per ciascuna).
+Le variabili vanno quindi create **una volta per ogni struttura**, con l'ID struttura
+come suffisso del nome:
+
+Per MiPA (`ME006995`):
+- `ALLOGGIATI_USER_ME006995` → nome utente sul portale per questa struttura
+- `ALLOGGIATI_PASSWORD_ME006995` → password sul portale per questa struttura
+- `ALLOGGIATI_WSKEY_ME006995` → chiave Web Service per questa struttura
+
+Per Via Nazionale (`ME001066`):
+- `ALLOGGIATI_USER_ME001066`
+- `ALLOGGIATI_PASSWORD_ME001066`
+- `ALLOGGIATI_WSKEY_ME001066`
+
+Se in futuro aggiungi altre strutture, ripeti lo schema con il relativo ID (e aggiungi
+anche l'opzione corrispondente nel menu a tendina di `index.html`).
+
+La WSKEY si genera dal menu account sul portale (diverso per ciascun account/struttura)
+→ **"Chiave Web Service"** → **"Genera Nuovo Codice"** — una al giorno, da rigenerare
+ad ogni cambio password.
+
+⚠️ **`ALLOGGIATI_PASSWORD_*` sono le password reali del portale ufficiale**: conservale
+solo come variabili d'ambiente su Netlify, mai nel codice.
 
 ### Protezione dell'app
 - `APP_SHARED_TOKEN` → una stringa a scelta (es. `alloggiati2026xyz`), usata come

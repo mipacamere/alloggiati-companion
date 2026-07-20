@@ -33,14 +33,20 @@ export default async (request) => {
   }
 
   const righe = Array.isArray(body.righe) ? body.righe : null;
+  const strutturaId = (body.struttura_id || '').trim();
   if (!righe || righe.length === 0) {
     return new Response(JSON.stringify({ error: 'Nessuna riga da convalidare (campo "righe" mancante o vuoto)' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
+  if (!strutturaId) {
+    return new Response(JSON.stringify({ error: 'Campo "struttura_id" mancante: necessario per scegliere le credenziali corrette' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
-    const { utente, token } = await getAlloggiatiToken();
+    const { utente, token } = await getAlloggiatiToken(strutturaId);
     const esito = await testSchedine(utente, token, righe);
     return new Response(JSON.stringify({ ok: true, ...esito }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
