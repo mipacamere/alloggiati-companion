@@ -36,6 +36,14 @@
             </div>
             
             <button id="btn-load" class="btn btn-primary">📥 Carica Dati</button>
+<div class="import-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+  <p style="font-size: 0.9em; color: #666; margin-bottom: 8px;">Oppure importa da file locale (TXT/CSV):</p>
+  <input type="file" id="txt-file-input" accept=".txt,.csv,.tsv" style="display: none;" />
+  <button type="button" id="btn-import-txt" class="btn btn-secondary" onclick="document.getElementById('txt-file-input').click()">
+    📂 Importa da TXT/CSV
+  </button>
+  <span id="txt-file-name" style="margin-left: 10px; font-size: 0.85em; color: #555;"></span>
+</div>
         </section>
 
         <!-- Sezione Lista Ospiti -->
