@@ -448,6 +448,10 @@ function escapeHtml(s) {
 // Secondo tracciato PDF Manuale Alloggiati Web — sezione 12
 // ============================================================
 function convertToRecord(guest, warnings) {
+  // Se è un record grezzo già in formato 168 caratteri, restituiscilo direttamente
+  if (guest.isRawRecord && guest.rawRecord) {
+    return guest.rawRecord;
+  }
     const rec = new Array(168).fill(' ');
     const cognome = String(guest.cognome || '').toUpperCase().trim();
     const nome = String(guest.nome || '').toUpperCase().trim();
