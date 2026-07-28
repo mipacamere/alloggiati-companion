@@ -86,6 +86,139 @@ async function loadLookupTables() {
 }
 
 // ============================================================
+// IMPORTAZIONE DA FILE TXT/CSV LOCALE
+// ============================================================
+document.getElementById('txt-file-input').addEventListener('change', function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  document.getElementById('txt-file-name').textContent = file.name;
+  showStatus('⏳ Lettura del file in corso...', 'success');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const content = e.target.result;
+    const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
+    
+    if (lines.length === 0) {
+      showStatus('⚠️ Il file è vuoto', 'error');
+      return;
+    }
+
+    const newGuests = [];
+    const firstLine = lines[0].trim();
+
+    // Rilevamento formato: se contiene separatori tipici è un CSV, altrimenti proviamo come formato fisso 168 char
+    const isCSV = firstLine.includes(';') || firstLine.includes(',') || firstLine.includes('\t');
+    
+    if (!isCSV && firstLine.length >= 168) {
+      // Parsing formato fisso 168 caratteri (Standard Alloggiati Web)
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.length >= 168) {
+          newGuests.push({
+            uiId: `txt-raw-${Date.now()}-${i}`,
+            isRawRecord: true,
+            rawRecord: line.substring(0, 168).padEnd(168, ' '),
+            cognome: line.substring(14, 64).trim(),
+            nome: line.substring(64, 94).trim(),
+            data_arrivo: line.substring(2, 12).trim(),
+            selected: true
+          });
+        }
+      }
+    } else {
+      // Parsing CSV/TSV
+      const separator = firstLine.includes(';') ? ';' : (firstLine.includes('\t') ? '\t' : ',');
+      const headers = parseCSVLine(firstLine, separator).map(h => h.toLowerCase());
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i], separator);
+        if (values.length < 2) continue; // Salta righe vuote o malformate
+        
+        const guest = { uiId: `txt-csv-${Date.now()}-${i}`, selected: true };
+        headers.forEach((header, index) => {
+          const key = mapCsvHeader(header);
+          if (key && values[index]) {
+            guest[key] = values[index];
+          }
+        });
+        
+        // Accetta il record se ha almeno cognome o nome
+        if (guest.cognome || guest.nome) {
+          newGuests.push(guest);
+        }
+      }
+    }
+
+    if (newGuests.length === 0) {
+      showStatus('⚠️ Nessun dato valido trovato nel file', 'error');
+      return;
+    }
+
+    // Raggruppa con gli ospiti già caricati (da Google Sheet o da precedenti import)
+    state.filteredGuests = [...state.filteredGuests, ...newGuests];
+    
+    document.getElementById('guest-list-section').classList.remove('hidden');
+    renderGuestList();
+    updateStats();
+    showStatus(`✅ Importati ${newGuests.length} ospiti dal file`, 'success');
+    
+    // Resetta l'input per permettere di ricaricare lo stesso file se necessario
+    event.target.value = '';
+    document.getElementById('txt-file-name').textContent = '';
+  };
+
+  reader.readAsText(file, 'UTF-8');
+});
+
+// Funzione di supporto per parsare righe CSV rispettando le virgolette
+function parseCSVLine(line, separator) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === separator && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim().replace(/^"|"$/g, ''));
+  return result;
+}
+
+// Funzione di supporto per mappare le intestazioni CSV ai campi interni dell'app
+function mapCsvHeader(header) {
+  const h = header.toLowerCase().trim();
+  const map = {
+    'cognome': 'cognome',
+    'nome': 'nome',
+    'data arrivo': 'data_arrivo',
+    'data_arrivo': 'data_arrivo',
+    'permanenza': 'permanenza',
+    'sesso': 'sesso',
+    'data nascita': 'data_nascita',
+    'data_nascita': 'data_nascita',
+    'comune nascita': 'comune_nascita',
+    'provincia nascita': 'provincia_nascita',
+    'stato nascita': 'stato_nascita',
+    'cittadinanza': 'cittadinanza',
+    'tipo documento': 'tipo_documento',
+    'numero documento': 'numero_documento',
+    'luogo rilascio': 'luogo_rilascio',
+    'tipo alloggiato': 'tipo_alloggiato',
+    'struttura': 'struttura_id'
+  };
+  return map[h] || null;
+}
+
+
+// ============================================================
 // EVENT LISTENERS
 // ============================================================
 function setupEventListeners() {
