@@ -51,6 +51,16 @@
     Scatta una foto o carica un'immagine del documento. I dati verranno estratti automaticamente.
   </p>
   
+  <!-- SELETTORE STRUTTURA (PRIMA DELLA SCANSIONE) -->
+  <div style="background: #f0f9ff; padding: 12px; border-radius: 6px; border: 1px solid #bae6fd; margin-bottom: 15px; text-align: left;">
+    <label style="font-size: 13px; font-weight: bold; color: #0369a1;">🏢 Struttura di destinazione</label>
+    <select id="ocr-struttura-capture" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #7dd3fc; border-radius: 4px; box-sizing: border-box; margin-top: 4px; font-weight: bold; color: #0c4a6e;">
+      <option value="">-- Seleziona struttura --</option>
+      <option value="ME001066">Via Nazionale (ME001066)</option>
+      <option value="ME006995">MiPA (ME006995)</option>
+    </select>
+  </div>
+  
   <input type="file" id="ocr-file-input" accept="image/*" capture="environment" style="display: none;" multiple>
   <button class="btn-primary" onclick="document.getElementById('ocr-file-input').click()" style="background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
     📷 Scatta / Carica Foto
@@ -72,7 +82,7 @@
   </div>
 </div>
 
-<!-- SEZIONE REVISIONE DATI ESTRATTI --><!-- SEZIONE REVISIONE DATI ESTRATTI -->
+<!-- SEZIONE REVISIONE DATI ESTRATTI -->
 <div id="ocr-review-section" class="hidden" style="margin-top: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
   <h3 style="margin-top: 0; color: #0f172a;">📝 Revisiona Dati Estratti</h3>
   <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">
@@ -80,15 +90,6 @@
   </p>
   
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-    <!-- CAMPO STRUTTURA AGGIUNTO -->
-    <div style="grid-column: 1 / -1; background: #f0f9ff; padding: 12px; border-radius: 6px; border: 1px solid #bae6fd;">
-      <label style="font-size: 13px; font-weight: bold; color: #0369a1;">🏢 Struttura di destinazione</label>
-      <select id="ocr-struttura" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #7dd3fc; border-radius: 4px; box-sizing: border-box; margin-top: 4px; font-weight: bold; color: #0c4a6e;">
-        <option value="ME001066">Via Nazionale (ME001066)</option>
-        <option value="ME006995">MiPA (ME006995)</option>
-      </select>
-    </div>
-
     <div>
       <label style="font-size: 12px; font-weight: bold; color: #475569;">Cognome</label>
       <input type="text" id="ocr-cognome" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
@@ -153,7 +154,7 @@
     <summary style="cursor: pointer;">Mostra testo OCR grezzo (per debug)</summary>
     <pre id="ocr-raw-text" style="background: #f1f5f9; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-size: 11px;"></pre>
   </details>
-</div>      
+</div>   
         </section>
 
         <!-- Sezione Lista Ospiti -->
