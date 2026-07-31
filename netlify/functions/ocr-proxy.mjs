@@ -1,6 +1,6 @@
 /**
  * MiPA OCR Proxy — Netlify Function
- * Raggiungibile su: https://tuosito.netlify.app/api/ocr-proxy
+ * Gestisce chiavi Google Vision diverse per ogni struttura.
  */
 export default async (request) => {
   const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
@@ -38,10 +38,45 @@ export default async (request) => {
     return new Response('Missing image', { status: 400, headers: corsHeaders });
   }
 
+  // === SELEZIONE CHIAVE IN BASE ALLA STRUTTURA ===
+  const strutturaId = body.struttura_id || '';
+  let apiKey = '';
+
+  // Opzione A: variabile JSON unica (consigliata, più scalabile)
+  if (process.env.GOOGLE_VISION_KEYS) {
+    try {
+      const keysMap = JSON.parse(process.env.GOOGLE_VISION_KEYS);
+      apiKey = keysMap[strutturaId] || '';
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'Invalid GOOGLE_VISION_KEYS config' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  // Opzione B: fallback su variabili dedicate per struttura
+  if (!apiKey) {
+    apiKey = process.env[`GOOGLE_VISION_API_KEY_${strutturaId}`] || '';
+  }
+
+  // Opzione C: fallback legacy su singola chiave globale
+  if (!apiKey) {
+    apiKey = process.env.GOOGLE_VISION_API_KEY || '';
+  }
+
+  if (!apiKey) {
+    return new Response(JSON.stringify({ 
+      error: 'Missing API key for structure', 
+      detail: `Nessuna chiave Vision configurata per la struttura "${strutturaId}".` 
+    }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   let visionRes;
   try {
     visionRes = await fetch(
-      'https://vision.googleapis.com/v1/images:annotate?key=' + process.env.GOOGLE_VISION_API_KEY,
+      'https://vision.googleapis.com/v1/images:annotate?key=' + apiKey,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
