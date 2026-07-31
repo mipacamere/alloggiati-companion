@@ -715,7 +715,8 @@ let ocrState = {
   rawText: '',
   extractedData: null,
   error: null,
-  errorDetail: ''
+  errorDetail: '',
+  strutturaId: ''
 };
 
 // 1. Gestione Upload Foto
@@ -752,9 +753,16 @@ document.getElementById('ocr-file-input').addEventListener('change', function(ev
 document.getElementById('btn-run-ocr').addEventListener('click', async () => {
   if (ocrState.images.length === 0) return;
 
+  const strutturaId = document.getElementById('ocr-struttura-capture').value;
+  if (!strutturaId) {
+    alert('⚠️ Seleziona prima la struttura di destinazione.');
+    return;
+  }
+
   ocrState.phase = 'processing';
   ocrState.error = null;
   ocrState.errorDetail = '';
+  ocrState.strutturaId = strutturaId; // Salva per il form di review
   document.getElementById('ocr-actions').style.display = 'none';
   document.getElementById('ocr-processing').style.display = 'block';
 
@@ -762,7 +770,7 @@ document.getElementById('btn-run-ocr').addEventListener('click', async () => {
   try {
     for (const img of ocrState.images) {
       const pre = await preprocessImage(img);
-      const { text } = await callVisionOCR(pre);
+      const { text } = await callVisionOCR(pre, strutturaId);
       combinedText += '\n' + text;
     }
   } catch (err) {
@@ -781,10 +789,12 @@ document.getElementById('btn-run-ocr').addEventListener('click', async () => {
 
 // 3. Aggiunta alla Lista Principale
 document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
-  const selectedStruttura = document.getElementById('ocr-struttura').value;
+  const selectedStruttura = ocrState.strutturaId || document.getElementById('structure-filter').value;
   
-  // Sincronizza il filtro principale dell'app con la struttura scelta per la scansione.
-  document.getElementById('structure-filter').value = selectedStruttura;
+  if (!selectedStruttura) {
+    alert('⚠️ Struttura non valida.');
+    return;
+  }
 
   const newGuest = {
     uiId: `ocr-${Date.now()}`,
@@ -823,7 +833,7 @@ document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
 
 // 4. Funzioni di Supporto OCR
 function clearOCR() {
-  ocrState = { images: [], phase: 'capture', rawText: '', extractedData: null, error: null, errorDetail: '' };
+  ocrState = { images: [], phase: 'capture', rawText: '', extractedData: null, error: null, errorDetail: '', strutturaId: '' };
   document.getElementById('ocr-preview').innerHTML = '';
   document.getElementById('ocr-actions').style.display = 'none';
   document.getElementById('ocr-processing').style.display = 'none';
@@ -837,10 +847,9 @@ function renderOCRReview() {
   
   const d = ocrState.extractedData || {};
   
-  // Pre-seleziona la struttura attualmente scelta nel filtro principale dell'app
-  const currentStructure = document.getElementById('structure-filter').value;
-  if (currentStructure) {
-    document.getElementById('ocr-struttura').value = currentStructure;
+  // La struttura è già stata scelta in fase di cattura, la sincronizziamo col filtro principale
+  if (ocrState.strutturaId) {
+    document.getElementById('structure-filter').value = ocrState.strutturaId;
   }
 
   document.getElementById('ocr-cognome').value = d.cognome || '';
@@ -896,13 +905,13 @@ function preprocessImage(dataUrl) {
   });
 }
 
-async function callVisionOCR(dataUrl) {
+async function callVisionOCR(dataUrl, strutturaId) {
   let res;
   try {
     res = await fetch(OCR_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Token': OCR_APP_TOKEN },
-      body: JSON.stringify({ image: dataUrl }),
+      body: JSON.stringify({ image: dataUrl, struttura_id: strutturaId }),
     });
   } catch (networkErr) {
     throw new Error('Rete: impossibile raggiungere il servizio OCR (' + networkErr.message + ')');
