@@ -44,6 +44,116 @@
   </button>
   <span id="txt-file-name" style="margin-left: 10px; font-size: 0.85em; color: #555;"></span>
 </div>
+<!-- SEZIONE ACQUISIZIONE OCR -->
+<div class="card" style="margin-top: 20px; border: 2px dashed #cbd5e1; padding: 20px; text-align: center; background: #f8fafc;">
+  <h3 style="margin-top: 0; color: #334155;">📸 Scansione Documento (OCR)</h3>
+  <p style="font-size: 14px; color: #64748b; margin-bottom: 15px;">
+    Scatta una foto o carica un'immagine del documento. I dati verranno estratti automaticamente.
+  </p>
+  
+  <input type="file" id="ocr-file-input" accept="image/*" capture="environment" style="display: none;" multiple>
+  <button class="btn-primary" onclick="document.getElementById('ocr-file-input').click()" style="background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+    📷 Scatta / Carica Foto
+  </button>
+  
+  <div id="ocr-preview" style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;"></div>
+  
+  <div id="ocr-actions" style="margin-top: 15px; display: none;">
+    <button id="btn-run-ocr" style="background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+      🔍 Estrai Dati (OCR)
+    </button>
+    <button onclick="clearOCR()" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin-left: 10px;">
+      Annulla
+    </button>
+  </div>
+
+  <div id="ocr-processing" style="display: none; margin-top: 15px; color: #2563eb; font-weight: bold;">
+    ⏳ Lettura del documento in corso...
+  </div>
+</div>
+
+<!-- SEZIONE REVISIONE DATI ESTRATTI --><!-- SEZIONE REVISIONE DATI ESTRATTI -->
+<div id="ocr-review-section" class="hidden" style="margin-top: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+  <h3 style="margin-top: 0; color: #0f172a;">📝 Revisiona Dati Estratti</h3>
+  <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">
+    Verifica e correggi i campi prima di aggiungere l'ospite alla lista.
+  </p>
+  
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+    <!-- CAMPO STRUTTURA AGGIUNTO -->
+    <div style="grid-column: 1 / -1; background: #f0f9ff; padding: 12px; border-radius: 6px; border: 1px solid #bae6fd;">
+      <label style="font-size: 13px; font-weight: bold; color: #0369a1;">🏢 Struttura di destinazione</label>
+      <select id="ocr-struttura" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #7dd3fc; border-radius: 4px; box-sizing: border-box; margin-top: 4px; font-weight: bold; color: #0c4a6e;">
+        <option value="ME001066">Via Nazionale (ME001066)</option>
+        <option value="ME006995">MiPA (ME006995)</option>
+      </select>
+    </div>
+
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Cognome</label>
+      <input type="text" id="ocr-cognome" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Nome</label>
+      <input type="text" id="ocr-nome" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Data Nascita (gg/mm/aaaa)</label>
+      <input type="text" id="ocr-data-nascita" class="form-input" placeholder="gg/mm/aaaa" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Sesso</label>
+      <select id="ocr-sesso" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+        <option value="">--</option>
+        <option value="M">M</option>
+        <option value="F">F</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Comune di Nascita</label>
+      <input type="text" id="ocr-comune-nascita" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Provincia Nascita</label>
+      <input type="text" id="ocr-provincia-nascita" class="form-input" maxlength="2" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; text-transform: uppercase;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Cittadinanza</label>
+      <input type="text" id="ocr-cittadinanza" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Tipo Documento</label>
+      <select id="ocr-tipo-documento" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+        <option value="CARTA DI IDENTITA">Carta d'Identità</option>
+        <option value="PASSAPORTO">Passaporto</option>
+        <option value="PATENTE DI GUIDA">Patente di Guida</option>
+        <option value="PERMESSO DI SOGGIORNO">Permesso di Soggiorno</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Numero Documento</label>
+      <input type="text" id="ocr-numero-documento" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    <div>
+      <label style="font-size: 12px; font-weight: bold; color: #475569;">Luogo di Rilascio</label>
+      <input type="text" id="ocr-luogo-rilascio" class="form-input" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+    </div>
+  </div>
+
+  <div style="margin-top: 20px; display: flex; gap: 10px;">
+    <button id="btn-add-ocr-guest" style="background: #16a34a; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; flex: 1; font-weight: bold;">
+      ✅ Aggiungi alla Lista
+    </button>
+    <button onclick="clearOCR()" style="background: #94a3b8; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; flex: 1;">
+      Annulla
+    </button>
+  </div>
+  
+  <details style="margin-top: 15px; font-size: 12px; color: #64748b;">
+    <summary style="cursor: pointer;">Mostra testo OCR grezzo (per debug)</summary>
+    <pre id="ocr-raw-text" style="background: #f1f5f9; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-size: 11px;"></pre>
+  </details>
+</div>      
         </section>
 
         <!-- Sezione Lista Ospiti -->
