@@ -84,22 +84,22 @@ async function loadLookupTables() {
   console.log(` Documenti: ${state.lookup.documenti.length}`);
   console.log(` Tipo Alloggiato: ${state.lookup.tipoAlloggiato.length}`);
   populateOcrDocumentoSelect();
+  populateTipoAlloggiatoSelects();
+  populateArrivalDateSelect();
 }
 
-// Popola dinamicamente il menu "Tipo Documento" della sezione OCR con TUTTE le voci
-// ufficiali di documenti.csv (95 voci), non solo le 4 più comuni codificate a mano in
-// precedenza: essendo un <select>, un valore riconosciuto dall'OCR ma assente tra le
-// opzioni (es. "PATENTE NAUTICA" o "CARTA IDENTITA' ELETTRONICA") non potrebbe mai
-// essere selezionato via JavaScript e andrebbe perso silenziosamente in revisione.
-// I tipi più frequenti in un B&B restano in cima, il resto segue in ordine alfabetico.
-function populateOcrDocumentoSelect() {
-  const select = document.getElementById('ocr-tipo-documento');
-  if (!select || !state.lookup.documenti.length) return;
+// Popola un <select> con tutte le Descrizioni ufficiali di una tabella di lookup,
+// mettendo in cima le voci più frequenti (PRIORITY) e il resto in ordine alfabetico.
+// Usata sia per il modulo OCR sia per la modale di modifica ospite, così i valori
+// disponibili sono sempre identici a quelli riconosciuti da findInTable() in fase
+// di generazione/invio del file: nessun valore "orfano" non selezionabile da menu.
+function populateSelectFromLookup(selectId, table, priorityList, defaultValue) {
+  const select = document.getElementById(selectId);
+  if (!select || !table || !table.length) return;
 
-  const PRIORITY = ["CARTA DI IDENTITA'", "CARTA IDENTITA' ELETTRONICA", 'PASSAPORTO ORDINARIO', 'PATENTE DI GUIDA', "CERTIFICATO D'IDENTITA'"];
-  const all = state.lookup.documenti.map(d => d.Descrizione).filter(Boolean);
-  const priorityFound = PRIORITY.filter(p => all.includes(p));
-  const rest = all.filter(d => !PRIORITY.includes(d)).sort((a, b) => a.localeCompare(b, 'it'));
+  const all = table.map(d => d.Descrizione).filter(Boolean);
+  const priorityFound = (priorityList || []).filter(p => all.includes(p));
+  const rest = all.filter(d => !priorityFound.includes(d)).sort((a, b) => a.localeCompare(b, 'it'));
 
   select.innerHTML = '';
   [...priorityFound, ...rest].forEach(desc => {
@@ -108,6 +108,47 @@ function populateOcrDocumentoSelect() {
     opt.textContent = desc;
     select.appendChild(opt);
   });
+  if (defaultValue && all.includes(defaultValue)) select.value = defaultValue;
+}
+
+// Popola dinamicamente il menu "Tipo Documento" della sezione OCR con TUTTE le voci
+// ufficiali di documenti.csv (95 voci), non solo le 4 più comuni codificate a mano in
+// precedenza: essendo un <select>, un valore riconosciuto dall'OCR ma assente tra le
+// opzioni (es. "PATENTE NAUTICA" o "CARTA IDENTITA' ELETTRONICA") non potrebbe mai
+// essere selezionato via JavaScript e andrebbe perso silenziosamente in revisione.
+// I tipi più frequenti in un B&B restano in cima, il resto segue in ordine alfabetico.
+const DOCUMENT_TYPE_PRIORITY = ["CARTA DI IDENTITA'", "CARTA IDENTITA' ELETTRONICA", 'PASSAPORTO ORDINARIO', 'PATENTE DI GUIDA', "CERTIFICATO D'IDENTITA'"];
+
+function populateOcrDocumentoSelect() {
+  populateSelectFromLookup('ocr-tipo-documento', state.lookup.documenti, DOCUMENT_TYPE_PRIORITY, "CARTA DI IDENTITA'");
+  populateSelectFromLookup('edit-tipo-documento', state.lookup.documenti, DOCUMENT_TYPE_PRIORITY, "CARTA DI IDENTITA'");
+}
+
+// Popola il menu "Tipo Alloggiato" (sia nella revisione OCR/manuale sia nella modale
+// di modifica) con le voci ufficiali di tipo_alloggiato.csv. In precedenza il valore
+// di default per gli ospiti aggiunti via OCR era la stringa libera "SINGOLO", che non
+// corrisponde a nessuna Descrizione ufficiale ("OSPITE SINGOLO") e veniva quindi
+// sempre segnalata come "non riconosciuta" in fase di generazione/invio.
+function populateTipoAlloggiatoSelects() {
+  populateSelectFromLookup('ocr-tipo-alloggiato', state.lookup.tipoAlloggiato, ['OSPITE SINGOLO'], 'OSPITE SINGOLO');
+  populateSelectFromLookup('edit-tipo-alloggiato', state.lookup.tipoAlloggiato, ['OSPITE SINGOLO'], 'OSPITE SINGOLO');
+}
+
+// Popola il menu "Data Arrivo" della revisione OCR/manuale con le uniche due date
+// ammesse per la schedina (oggi/ieri), coerentemente col resto dell'app.
+function populateArrivalDateSelect() {
+  const select = document.getElementById('ocr-data-arrivo');
+  if (!select) return;
+  const oggi = getDateFormatted(0);
+  const ieri = getDateFormatted(-1);
+  select.innerHTML = '';
+  [{ v: ieri, l: ieri + ' — Ieri' }, { v: oggi, l: oggi + ' — Oggi' }].forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.v;
+    opt.textContent = o.l;
+    select.appendChild(opt);
+  });
+  select.value = oggi;
 }
 
 // ============================================================
@@ -251,6 +292,11 @@ function setupEventListeners() {
   document.getElementById('btn-clear').addEventListener('click', clearAll);
   document.getElementById('btn-select-all').addEventListener('click', selectAll);
   document.getElementById('btn-deselect-all').addEventListener('click', deselectAll);
+  document.getElementById('btn-save-edit-guest').addEventListener('click', saveEditGuest);
+  document.getElementById('btn-cancel-edit-guest').addEventListener('click', closeEditGuest);
+  document.getElementById('edit-guest-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'edit-guest-overlay') closeEditGuest();
+  });
 }
 
 // ============================================================
@@ -388,16 +434,115 @@ function renderGuestList() {
     const nome = String(guest.nome || '-');
 
     card.innerHTML = `
-      <label>
+      <label style="flex:1; display:flex; align-items:center; gap:1rem;">
         <input type="checkbox" ${guest.selected ? 'checked' : ''} onchange="toggleGuest(${index})">
         <div class="guest-info">
-          <strong>${cognome} ${nome}</strong>
-          <span>${tipoAllog} • Arrivo: ${dataArrivo} • Permanenza: ${guest.permanenza || '-'} gg</span>
+          <strong>${escapeHtml(cognome)} ${escapeHtml(nome)}</strong>
+          <span>${escapeHtml(tipoAllog)} • Arrivo: ${escapeHtml(dataArrivo)} • Permanenza: ${escapeHtml(String(guest.permanenza || '-'))} gg</span>
         </div>
       </label>
+      <div class="guest-card-actions">
+        <button type="button" class="guest-card-btn" title="Modifica dati ospite" onclick="openEditGuest(${index})">✏️</button>
+        <button type="button" class="guest-card-btn danger" title="Rimuovi ospite dalla lista" onclick="removeGuestAt(${index})">🗑️</button>
+      </div>
     `;
     list.appendChild(card);
   });
+}
+
+// ============================================================
+// MODIFICA OSPITE (modale) — valida per ospiti caricati da foglio Google,
+// importati da TXT/CSV o aggiunti via OCR/compilazione manuale: qualunque sia
+// l'origine dei dati, prima di generare o inviare il file alla Questura è
+// sempre possibile correggerli qui.
+// ============================================================
+let editingGuestIndex = null;
+
+function openEditGuest(index) {
+  const guest = state.filteredGuests[index];
+  if (!guest) return;
+
+  if (guest.isRawRecord) {
+    alert('Questo ospite proviene da un file a formato fisso (168 caratteri) importato senza intestazioni CSV: non contiene campi separati da modificare qui. Puoi comunque rimuoverlo e reinserirlo manualmente se serve correggerlo.');
+    return;
+  }
+
+  editingGuestIndex = index;
+  populateOcrDocumentoSelect();
+  populateTipoAlloggiatoSelects();
+
+  document.getElementById('edit-struttura').value = guest.struttura_id || document.getElementById('structure-filter').value || '';
+  document.getElementById('edit-data-arrivo').value = guest.data_arrivo || '';
+  document.getElementById('edit-permanenza').value = guest.permanenza || '1';
+  document.getElementById('edit-tipo-alloggiato').value = guest.tipo_alloggiato || 'OSPITE SINGOLO';
+  document.getElementById('edit-cognome').value = guest.cognome || '';
+  document.getElementById('edit-nome').value = guest.nome || '';
+  document.getElementById('edit-data-nascita').value = guest.data_nascita || '';
+  document.getElementById('edit-sesso').value = guest.sesso || '';
+  document.getElementById('edit-comune-nascita').value = guest.comune_nascita || '';
+  document.getElementById('edit-provincia-nascita').value = guest.provincia_nascita || '';
+  document.getElementById('edit-stato-nascita').value = guest.stato_nascita || '';
+  document.getElementById('edit-cittadinanza').value = guest.cittadinanza || '';
+  document.getElementById('edit-tipo-documento').value = guest.tipo_documento || "CARTA DI IDENTITA'";
+  document.getElementById('edit-numero-documento').value = guest.numero_documento || '';
+  document.getElementById('edit-luogo-rilascio').value = guest.luogo_rilascio || '';
+
+  document.getElementById('edit-guest-overlay').classList.remove('hidden');
+}
+
+function closeEditGuest() {
+  editingGuestIndex = null;
+  document.getElementById('edit-guest-overlay').classList.add('hidden');
+}
+
+function saveEditGuest() {
+  if (editingGuestIndex === null) return;
+  const guest = state.filteredGuests[editingGuestIndex];
+  if (!guest) { closeEditGuest(); return; }
+
+  const cognome = document.getElementById('edit-cognome').value.trim().toUpperCase();
+  const nome = document.getElementById('edit-nome').value.trim().toUpperCase();
+  if (!cognome && !nome) {
+    alert('Inserisci almeno il Cognome o il Nome per salvare le modifiche.');
+    return;
+  }
+
+  Object.assign(guest, {
+    struttura_id: document.getElementById('edit-struttura').value,
+    data_arrivo: document.getElementById('edit-data-arrivo').value.trim(),
+    permanenza: String(Math.max(1, Math.min(30, parseInt(document.getElementById('edit-permanenza').value, 10) || 1))),
+    tipo_alloggiato: document.getElementById('edit-tipo-alloggiato').value,
+    cognome,
+    nome,
+    data_nascita: document.getElementById('edit-data-nascita').value.trim(),
+    sesso: document.getElementById('edit-sesso').value,
+    comune_nascita: document.getElementById('edit-comune-nascita').value.trim().toUpperCase(),
+    provincia_nascita: document.getElementById('edit-provincia-nascita').value.trim().toUpperCase(),
+    stato_nascita: document.getElementById('edit-stato-nascita').value.trim().toUpperCase(),
+    cittadinanza: document.getElementById('edit-cittadinanza').value.trim().toUpperCase(),
+    tipo_documento: document.getElementById('edit-tipo-documento').value,
+    numero_documento: document.getElementById('edit-numero-documento').value.trim().toUpperCase(),
+    luogo_rilascio: document.getElementById('edit-luogo-rilascio').value.trim().toUpperCase(),
+  });
+
+  closeEditGuest();
+  renderGuestList();
+  updateStats();
+  clearQuesturaResult();
+  showStatus(`✅ Dati di ${cognome} ${nome} aggiornati`, 'success');
+}
+
+function removeGuestAt(index) {
+  const guest = state.filteredGuests[index];
+  if (!guest) return;
+  const label = `${guest.cognome || ''} ${guest.nome || ''}`.trim() || 'questo ospite';
+  if (!confirm(`Rimuovere ${label} dalla lista?`)) return;
+  state.filteredGuests.splice(index, 1);
+  renderGuestList();
+  updateStats();
+  if (state.filteredGuests.length === 0) {
+    document.getElementById('guest-list-section').classList.add('hidden');
+  }
 }
 
 window.toggleGuest = function(index) {
@@ -825,6 +970,23 @@ document.getElementById('btn-run-ocr').addEventListener('click', async () => {
   renderOCRReview();
 });
 
+// 2bis. Compilazione manuale (nessuna foto, nessun invio a Google Vision)
+// Stessa scelta offerta da MiPA Companion: chi preferisce non usare l'OCR può
+// aprire direttamente il form di revisione con i campi vuoti e compilarli a mano.
+document.getElementById('btn-manual-entry').addEventListener('click', () => {
+  const strutturaId = document.getElementById('ocr-struttura-capture').value;
+  if (!strutturaId) {
+    alert('⚠️ Seleziona prima la struttura di destinazione.');
+    return;
+  }
+  ocrState = { images: [], phase: 'review', rawText: '', extractedData: {}, confidence: null, error: null, errorDetail: '', strutturaId };
+  document.getElementById('ocr-preview').innerHTML = '';
+  document.getElementById('ocr-actions').style.display = 'none';
+  document.getElementById('ocr-processing').style.display = 'none';
+  renderOCRReview();
+  document.getElementById('ocr-review-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 // 3. Aggiunta alla Lista Principale
 document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
   const selectedStruttura = ocrState.strutturaId || document.getElementById('structure-filter').value;
@@ -849,9 +1011,9 @@ document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
     tipo_documento: document.getElementById('ocr-tipo-documento').value,
     numero_documento: document.getElementById('ocr-numero-documento').value.trim().toUpperCase(),
     luogo_rilascio: document.getElementById('ocr-luogo-rilascio').value.trim().toUpperCase(),
-    data_arrivo: document.getElementById('date-filter').value === 'today' ? getDateFormatted(0) : getDateFormatted(-1),
-    permanenza: '1',
-    tipo_alloggiato: 'SINGOLO'
+    data_arrivo: document.getElementById('ocr-data-arrivo').value.trim(),
+    permanenza: String(Math.max(1, Math.min(30, parseInt(document.getElementById('ocr-permanenza').value, 10) || 1))),
+    tipo_alloggiato: document.getElementById('ocr-tipo-alloggiato').value
   };
 
   if (!newGuest.cognome && !newGuest.nome) {
@@ -890,6 +1052,14 @@ function renderOCRReview() {
     document.getElementById('structure-filter').value = ocrState.strutturaId;
   }
 
+  // Soggiorno: sempre proposti e sempre modificabili, sia dopo OCR sia in compilazione
+  // manuale — stessa sezione "Stay" mostrata da MiPA Companion in fase di revisione.
+  populateArrivalDateSelect();
+  if (d.data_arrivo) document.getElementById('ocr-data-arrivo').value = d.data_arrivo;
+  document.getElementById('ocr-permanenza').value = d.permanenza || '1';
+  populateTipoAlloggiatoSelects();
+  if (d.tipo_alloggiato) document.getElementById('ocr-tipo-alloggiato').value = d.tipo_alloggiato;
+
   document.getElementById('ocr-cognome').value = d.cognome || '';
   document.getElementById('ocr-nome').value = d.nome || '';
   document.getElementById('ocr-data-nascita').value = d.data_nascita || '';
@@ -897,9 +1067,27 @@ function renderOCRReview() {
   document.getElementById('ocr-comune-nascita').value = d.comune_nascita || '';
   document.getElementById('ocr-provincia-nascita').value = d.provincia_nascita || '';
   document.getElementById('ocr-cittadinanza').value = d.cittadinanza || 'ITALIANA';
+  populateOcrDocumentoSelect();
   document.getElementById('ocr-tipo-documento').value = d.tipo_documento || 'CARTA DI IDENTITA\'';
   document.getElementById('ocr-numero-documento').value = d.numero_documento || '';
   document.getElementById('ocr-luogo-rilascio').value = d.luogo_rilascio || '';
+
+  // Affidabilità OCR ed eventuali errori: mostrati in evidenza nel form, non solo
+  // nascosti dentro il testo grezzo di debug (in linea con la revisione di MiPA).
+  const confNote = document.getElementById('ocr-confidence-note');
+  if (typeof ocrState.confidence === 'number') {
+    confNote.textContent = `📊 Affidabilità OCR stimata: ${Math.round(ocrState.confidence * 100)}% — verifica comunque ogni campo prima di aggiungere l'ospite.`;
+    confNote.style.display = 'block';
+  } else {
+    confNote.style.display = 'none';
+  }
+  const errNote = document.getElementById('ocr-error-note');
+  if (ocrState.error) {
+    errNote.textContent = `⚠️ Non è stato possibile leggere il documento con l'OCR (${ocrState.errorDetail || 'errore sconosciuto'}). Compila i campi manualmente.`;
+    errNote.style.display = 'block';
+  } else {
+    errNote.style.display = 'none';
+  }
 
   let rawDisplay = ocrState.rawText || 'Nessun testo estratto.';
   if (typeof ocrState.confidence === 'number') {

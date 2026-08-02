@@ -68,6 +68,39 @@ h2 { margin-bottom: 1rem; color: var(--primary); font-size: 1.2rem; }
 .status.success { background: #d4edda; color: #155724; }
 .hidden { display: none !important; }
 
+/* Modale di modifica ospite */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 30px 15px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+.modal-box {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 22px;
+    width: 100%;
+    max-width: 640px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+.guest-card-actions { display: flex; gap: 6px; }
+.guest-card-btn {
+    background: #e2e8f0;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.guest-card-btn:hover { background: #cbd5e1; }
+.guest-card-btn.danger { background: #fee2e2; }
+.guest-card-btn.danger:hover { background: #fecaca; }
+
 @media (max-width: 600px) {
     .form-row { grid-template-columns: 1fr; }
     .stats { grid-template-columns: 1fr; }
