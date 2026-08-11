@@ -56,6 +56,46 @@ ad ogni cambio password.
 ⚠️ **`ALLOGGIATI_PASSWORD_*` sono le password reali del portale ufficiale**: conservale
 solo come variabili d'ambiente su Netlify, mai nel codice.
 
+### Web-API Osservatorio Turistico Regione Siciliana (Turist@t) — statistiche ISTAT, opzionale
+
+⚠️ Adempimento **distinto e aggiuntivo** rispetto all'invio alla Questura: la Regione
+Siciliana richiede alle strutture ricettive di comunicare quotidianamente i dati sul
+movimento dei clienti anche all'Osservatorio Turistico regionale, ai fini della
+rilevazione ISTAT. Per usare questa funzione dall'app serve un account di tipo
+**UTENTE PMS** (diverso dall'account "struttura ricettiva" con cui si accede al
+portale via browser): va richiesto al Servizio 3 "Osservatorio Turistico"
+dell'Assessorato Regionale del Turismo (per la provincia di Messina:
+servizioturistico.ct@certmail.regione.sicilia.it, o il servizio turistico provinciale
+competente), indicando esplicitamente che si vuole collegare un gestionale (PMS).
+
+Una volta ricevute le credenziali PMS (username e password iniziano tipicamente con
+`TRS-IT-SIC-...`) e il relativo **Hotel Code** (visibile nel portale alla voce "Codice
+Identificativo"), imposta su Netlify, una volta per ogni struttura:
+
+Per MiPA (`ME006995`):
+- `REGIONE_SICILIA_USERID_ME006995`
+- `REGIONE_SICILIA_PASSWORD_ME006995`
+- `REGIONE_SICILIA_HOTELCODE_ME006995`
+
+Per Via Nazionale (`ME001066`):
+- `REGIONE_SICILIA_USERID_ME001066`
+- `REGIONE_SICILIA_PASSWORD_ME001066`
+- `REGIONE_SICILIA_HOTELCODE_ME001066`
+
+Se una struttura non ha ancora queste credenziali configurate, il pulsante "Invia Dati
+alla Regione" resterà comunque visibile e cliccabile, ma la Netlify Function risponderà
+con un errore chiaro che indica quali variabili mancano — non blocca in alcun modo
+l'invio alla Questura, che resta indipendente.
+
+**Limite noto**: il tracciato della Regione richiede anche il campo "comune/stato di
+**residenza**" dell'ospite, dato che questa app **non raccoglie** (il tracciato
+Alloggiati Web della Questura non lo prevede). Per non bloccare l'invio, l'app imposta
+automaticamente questo campo uguale al **luogo di nascita** dell'ospite — un'
+approssimazione dichiarata anche nell'interfaccia, non il dato di residenza reale. Se in
+futuro serve maggiore precisione statistica, andrebbe aggiunto un campo "residenza"
+all'anagrafica ospite (Google Sheet + form OCR) e aggiornata la funzione
+`buildRegioneStayForGuest` in `app.js`.
+
 ### Protezione dell'app
 - `APP_SHARED_TOKEN` → una stringa a scelta (es. `alloggiati2026xyz`), usata come
   "password" leggera tra il frontend e le function di questo sito. **Diversa** da quella
@@ -72,13 +112,17 @@ const APP_TOKEN = 'CHANGE-ME'; // <-- sostituisci con lo stesso valore di APP_SH
 1. Scegli **data di arrivo** (solo oggi o ieri, coerente con le regole di MiPA Companion)
    e **struttura**, poi premi "Carica Dati": la Netlify Function legge il Google Sheet e
    restituisce gli ospiti corrispondenti.
-2. Rivedi/deseleziona ospiti se necessario, poi scegli una delle tre azioni:
+2. Rivedi/deseleziona ospiti se necessario, poi scegli una delle azioni:
    - **Genera File TXT**: scarica il file pronto per il caricamento manuale sul portale.
    - **Convalida con la Questura (Test)**: verifica le schedine tramite il Web Service
      ufficiale, **senza inviarle davvero**. Mostra l'esito ospite per ospite.
    - **Invia REALMENTE alla Questura**: trasmette davvero le schedine. Chiede sempre
      conferma esplicita prima di procedere — usala solo dopo aver controllato l'esito
      della convalida.
+   - **Invia Dati alla Regione (Osservatorio Turistico Sicilia)**: invio distinto e
+     aggiuntivo, ai soli fini statistici ISTAT, verso la piattaforma Turist@t della
+     Regione Siciliana. Richiede le credenziali PMS descritte sopra; chiede conferma
+     esplicita prima di procedere e mostra l'esito di validazione per ogni ospite.
 
 ## 4. Struttura del codice
 
@@ -89,8 +133,11 @@ const APP_TOKEN = 'CHANGE-ME'; // <-- sostituisci con lo stesso valore di APP_SH
 - `netlify/functions/read-guests.mjs` — legge il foglio (richiede Google)
 - `netlify/functions/test-schedine.mjs` — convalida (Test) via Web Service Polizia
 - `netlify/functions/send-schedine.mjs` — invio reale (Send) via Web Service Polizia
+- `netlify/functions/send-regione-sicilia.mjs` — invio dati statistici ISTAT alla
+  Regione Siciliana (Osservatorio Turistico / Turist@t), indipendente dall'invio alla
+  Questura
 - `netlify/functions/_lib/` — moduli condivisi (autenticazione Google, autenticazione
-  Alloggiati Web, client SOAP)
+  Alloggiati Web, client SOAP, client REST + autenticazione Regione Siciliana)
 
 ## Nota sullo schema dati
 

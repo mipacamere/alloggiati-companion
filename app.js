@@ -11,6 +11,7 @@ const APP_TOKEN = 'alloggiati2026xyz';
 const READ_GUESTS_URL = '/api/read-guests';
 const TEST_URL = '/api/test-schedine';
 const SEND_URL = '/api/send-schedine';
+const REGIONE_SEND_URL = '/api/send-regione-sicilia';
 
 // Stato dell'applicazione
 const state = {
@@ -289,6 +290,7 @@ function setupEventListeners() {
   document.getElementById('btn-generate').addEventListener('click', generateAndDownloadTXT);
   document.getElementById('btn-test').addEventListener('click', testWithQuestura);
   document.getElementById('btn-send').addEventListener('click', sendToQuestura);
+  document.getElementById('btn-send-regione').addEventListener('click', sendToRegioneSicilia);
   document.getElementById('btn-clear').addEventListener('click', clearAll);
   document.getElementById('btn-select-all').addEventListener('click', selectAll);
   document.getElementById('btn-deselect-all').addEventListener('click', deselectAll);
@@ -362,6 +364,171 @@ function findComune(nome, provincia) {
 
 function pad(str, len) {
   return String(str || '').padEnd(len, ' ').substring(0, len);
+}
+
+// ============================================================
+// INVIO REGIONE SICILIA — Osservatorio Turistico (Turist@t)
+// ============================================================
+// Protocollo ufficiale "Sistema Informativo Osservatorio Turistico Regione Siciliana —
+// Protocollo di Comunicazione PMS" (rev. 1.0.7, 03/04/2025). Riusa le stesse tabelle
+// ufficiali (comuni.csv / stati.csv / tipo_alloggiato.csv) già caricate per la Questura,
+// perché i codici richiesti da questa API (NationalityCode, BirthPlaceCode,
+// ResidencePlaceCode: numerici a 9 cifre delle tabelle Nazioni/Comuni di AlloggiatiWeb;
+// Type: 16-20 = tipo alloggiato) coincidono esattamente con quelli del sistema
+// AlloggiatiWeb della Polizia di Stato.
+//
+// NOTA IMPORTANTE: il tracciato richiede anche "ResidencePlaceCode" (comune/stato di
+// RESIDENZA dell'ospite), dato che questa app non raccoglie (il tracciato Alloggiati
+// Web della Questura non lo prevede). Per non bloccare l'invio usiamo come valore il
+// luogo di NASCITA: è un'approssimazione dichiarata sia nell'interfaccia utente sia qui
+// nel codice, non il dato di residenza reale.
+
+function computeAge(dataNascitaStr, refDateStr) {
+  const dob = parseDate(dataNascitaStr);
+  const ref = parseDate(refDateStr) || new Date();
+  if (!dob) return null;
+  let age = ref.getFullYear() - dob.getFullYear();
+  const m = ref.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && ref.getDate() < dob.getDate())) age--;
+  return Math.max(0, Math.min(150, age));
+}
+
+function addDaysToDateStr(dataStr, days) {
+  const d = parseDate(dataStr);
+  if (!d) return null;
+  const d2 = new Date(d);
+  d2.setDate(d2.getDate() + days);
+  return d2;
+}
+
+// Converte una data JS in formato UTC richiesto dal protocollo (es. 2014-07-05T10:00:00.000Z).
+// Si usa l'orario fisso 10:00 UTC, coerente con gli esempi ufficiali del documento, per
+// evitare che l'ora locale italiana faccia scivolare la data al giorno prima/dopo.
+function toRegioneDateTime(dateOrStr) {
+  const d = (dateOrStr instanceof Date) ? dateOrStr : parseDate(dateOrStr);
+  if (!d) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T10:00:00.000Z`;
+}
+
+// Riduce una stringa a soli caratteri alfanumerici maiuscoli (rimuove accenti/spazi),
+// utile per costruire identificativi stabili senza caratteri problematici in XML.
+function slugId(str) {
+  return String(str || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+// Hash numerico semplice (djb2-like) solo per rendere l'identificativo più compatto e
+// ridurre il rischio di collisioni tra ospiti diversi con nomi simili: non è un requisito
+// crittografico del protocollo, che chiede solo un ID univoco per ospite.
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).toUpperCase();
+}
+
+function buildRegioneGuestId(guest) {
+  const base = slugId(guest.cognome) + slugId(guest.nome) + slugId(guest.data_nascita) + slugId(guest.numero_documento || '');
+  return (base.slice(0, 24) || 'OSPITE') + '-' + simpleHash(base + String(guest.data_arrivo || ''));
+}
+
+// Costruisce l'oggetto "Stay" (un soggiorno con un solo ospite) da inviare all'Osservatorio
+// Turistico per un singolo ospite della lista. Restituisce null se mancano dati
+// indispensabili (in tal caso viene aggiunto un warning esplicativo).
+function buildRegioneStayForGuest(guest, hotelCode, warnings) {
+  const cognome = String(guest.cognome || '').toUpperCase().trim();
+  const nome = String(guest.nome || '').toUpperCase().trim();
+  const rowLabel = `${cognome} ${nome}`;
+
+  const dataNascita = String(guest.data_nascita || '').trim();
+  const age = computeAge(dataNascita, guest.data_arrivo);
+  if (age === null) {
+    warnings.push(`${rowLabel}: data di nascita "${dataNascita}" non valida, ospite escluso dall'invio alla Regione`);
+    return null;
+  }
+
+  const tipoAlloggiatoDesc = String(guest.tipo_alloggiato || '').trim();
+  const tipo = findInTable(state.lookup.tipoAlloggiato, 'Descrizione', tipoAlloggiatoDesc);
+  if (!tipo) {
+    warnings.push(`${rowLabel}: tipo alloggiato "${tipoAlloggiatoDesc}" non riconosciuto, ospite escluso dall'invio alla Regione`);
+    return null;
+  }
+
+  const cittadinanzaDesc = String(guest.cittadinanza || '').trim();
+  const cittadinanza = findInTable(state.lookup.stati, 'Descrizione', cittadinanzaDesc);
+  if (!cittadinanza) {
+    warnings.push(`${rowLabel}: cittadinanza "${cittadinanzaDesc}" non riconosciuta, ospite escluso dall'invio alla Regione`);
+    return null;
+  }
+
+  // Luogo di nascita: comune (se Italia) o stato estero, stessa logica usata per la Questura.
+  const statoNascitaDesc = String(guest.stato_nascita || '').trim();
+  const statoNascita = findInTable(state.lookup.stati, 'Descrizione', statoNascitaDesc);
+  if (!statoNascita) {
+    warnings.push(`${rowLabel}: stato di nascita "${statoNascitaDesc}" non riconosciuto, ospite escluso dall'invio alla Regione`);
+    return null;
+  }
+  const isItalia = statoNascita.Codice === '100000100';
+  let birthPlaceCode = statoNascita.Codice;
+  if (isItalia) {
+    const comune = findComune(guest.comune_nascita, guest.provincia_nascita);
+    if (!comune) {
+      warnings.push(`${rowLabel}: comune di nascita "${guest.comune_nascita || ''}" non riconosciuto, ospite escluso dall'invio alla Regione`);
+      return null;
+    }
+    birthPlaceCode = comune.Codice;
+  }
+
+  // ResidencePlaceCode: vedi nota sopra, approssimato al luogo di nascita.
+  const residencePlaceCode = birthPlaceCode;
+
+  const sesso = String(guest.sesso || '').toUpperCase().trim();
+  const gender = sesso === 'F' ? '2' : '1';
+
+  const nights = Math.max(1, Math.min(30, parseInt(guest.permanenza, 10) || 1));
+  const arrivalDate = toRegioneDateTime(String(guest.data_arrivo || '').trim());
+  if (!arrivalDate) {
+    warnings.push(`${rowLabel}: data di arrivo "${guest.data_arrivo || ''}" non valida, ospite escluso dall'invio alla Regione`);
+    return null;
+  }
+  const departureDate = toRegioneDateTime(addDaysToDateStr(String(guest.data_arrivo || '').trim(), nights));
+
+  const guestId = buildRegioneGuestId(guest);
+  const stayId = `${hotelCode}_${guestId}`;
+
+  return {
+    stayId,
+    guestId,
+    age,
+    nationalityCode: cittadinanza.Codice,
+    birthPlaceCode,
+    residencePlaceCode,
+    type: tipo.Codice,
+    gender,
+    email: '',
+    arrivalDate,
+    departureDate,
+    checkout: false,
+    bedOccupancy: true,
+    rooms: [{ roomId: '1', startDate: arrivalDate, endDate: departureDate }],
+  };
+}
+
+function buildRegioneStaysForSelected(hotelCode) {
+  const selectedGuests = state.filteredGuests.filter(g => g.selected);
+  const warnings = [];
+  const stays = [];
+  selectedGuests.forEach(guest => {
+    const stay = buildRegioneStayForGuest(guest, hotelCode, warnings);
+    if (stay) stays.push(stay);
+  });
+  return { stays, warnings, selectedGuests };
 }
 
 // ============================================================
@@ -575,6 +742,7 @@ function updateStats() {
   document.getElementById('btn-generate').disabled = selected === 0;
   document.getElementById('btn-test').disabled = selected === 0;
   document.getElementById('btn-send').disabled = selected === 0;
+  document.getElementById('btn-send-regione').disabled = selected === 0;
 }
 
 function clearAll() {
@@ -582,6 +750,7 @@ function clearAll() {
   document.getElementById('guest-list-section').classList.add('hidden');
   document.getElementById('structure-filter').value = '';
   clearQuesturaResult();
+  clearRegioneResult();
   updateStats();
 }
 
@@ -594,6 +763,11 @@ function showStatus(message, type) {
   setTimeout(() => {
     statusEl.classList.add('hidden');
   }, 5000);
+}
+
+function clearRegioneResult() {
+  const el = document.getElementById('regione-result');
+  if (el) el.innerHTML = '';
 }
 
 function clearQuesturaResult() {
@@ -840,6 +1014,93 @@ async function sendToQuestura() {
   }
 }
 
+async function sendToRegioneSicilia() {
+  const strutturaId = document.getElementById('structure-filter').value;
+  if (!strutturaId) {
+    showStatus('⚠️ Seleziona una struttura', 'error');
+    return;
+  }
+
+  // hotelCode qui è solo un prefisso leggibile/univoco per lo StayId lato client: il
+  // valore autorevole del HotelCode (formato TRS-IT-SIC-xxxxx) viene sempre applicato
+  // lato server dalla Netlify Function, in base alle credenziali configurate per la
+  // struttura, non da quanto inviato dal browser.
+  const { stays, warnings, selectedGuests } = buildRegioneStaysForSelected(strutturaId);
+  if (stays.length === 0) {
+    showStatus('❌ Nessun ospite valido da inviare alla Regione (controlla i campi anagrafici)', 'error');
+    if (warnings.length) renderRegioneWarnings(warnings);
+    return;
+  }
+
+  const strutturaNome = STRUTTURE[strutturaId] || strutturaId;
+  const conferma = confirm(
+    `Stai per inviare ${stays.length} ospite/i all'Osservatorio Turistico della Regione Siciliana ` +
+    `(fini statistici ISTAT) per la struttura "${strutturaNome}" (${strutturaId}).\n\n` +
+    (warnings.length ? `${warnings.length} ospite/i verranno esclusi per dati mancanti/non riconosciuti.\n\n` : '') +
+    `Ricorda: il campo "residenza" richiesto dall'API viene approssimato al luogo di nascita ` +
+    `(vedi nota nella sezione). Premi OK solo se vuoi procedere.`
+  );
+  if (!conferma) return;
+
+  document.getElementById('btn-send-regione').disabled = true;
+  document.getElementById('regione-result').innerHTML = '<div class="loading">⏳ Invio in corso alla Regione Siciliana…</div>';
+
+  try {
+    const res = await fetch(REGIONE_SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
+      body: JSON.stringify({ struttura_id: strutturaId, stays }),
+    });
+    const data = await res.json().catch(() => null);
+    renderEsitoRegione(data, res.ok, warnings, stays);
+  } catch (err) {
+    document.getElementById('regione-result').innerHTML = `<div class="error-box">Errore di rete: ${escapeHtml(err.message || String(err))}</div>`;
+  } finally {
+    document.getElementById('btn-send-regione').disabled = false;
+  }
+}
+
+function renderRegioneWarnings(warnings) {
+  const box = document.getElementById('regione-result');
+  box.innerHTML = `<div class="warning-box"><strong>Ospiti esclusi dall'invio alla Regione (dati mancanti/non riconosciuti):</strong><br>${warnings.map(escapeHtml).join('<br>')}</div>`;
+}
+
+function renderEsitoRegione(data, resOk, buildWarnings, stays) {
+  const box = document.getElementById('regione-result');
+  if (!resOk || !data || !data.ok) {
+    const errMsg = (data && (data.error + (data.detail ? ' — ' + data.detail : ''))) || 'Errore sconosciuto';
+    box.innerHTML = `<div class="error-box"><strong>Errore:</strong> ${escapeHtml(errMsg)}</div>`;
+    return;
+  }
+
+  let html = '';
+  if (buildWarnings.length) {
+    html += `<div class="warning-box"><strong>Ospiti esclusi prima dell'invio (dati mancanti/non riconosciuti):</strong><br>${buildWarnings.map(escapeHtml).join('<br>')}</div>`;
+  }
+
+  const risultati = data.risultati || [];
+  const validCount = risultati.filter(r => r.isValid).length;
+  const totale = risultati.length || stays.length;
+  const titolo = data.tuttiValidi ? 'Tutti i dati sono stati accettati dalla Regione Siciliana' : `${validCount} su ${totale} ospiti accettati dalla Regione Siciliana`;
+  html += `<div class="${data.tuttiValidi ? 'success-box' : 'warning-box'}"><strong>${escapeHtml(titolo)}</strong></div>`;
+
+  if (risultati.length) {
+    html += '<ul class="dettaglio-lista">';
+    risultati.forEach((r, idx) => {
+      const stay = stays[idx];
+      const nome = stay ? stay.guestId : (r.objectId || `ospite ${idx + 1}`);
+      const stato = r.isValid ? '✅' : '❌';
+      const msgs = (r.messages || []).concat(
+        (r.nested || []).flatMap(n => n.messages || [])
+      ).map(m => `${m.fieldName ? m.fieldName + ': ' : ''}${m.message}`).join('; ');
+      html += `<li>${stato} ${escapeHtml(nome)}${msgs ? ' — ' + escapeHtml(msgs) : ''}</li>`;
+    });
+    html += '</ul>';
+  }
+
+  box.innerHTML = html;
+}
+
 function renderEsitoQuestura(data, resOk, conversionWarnings, selectedGuests, wasRealSend) {
   const box = document.getElementById('questura-result');
   if (!resOk || !data || !data.ok) {
@@ -900,7 +1161,11 @@ let ocrState = {
 };
 
 // 1. Gestione Upload Foto
-document.getElementById('ocr-file-input').addEventListener('change', function(event) {
+// Stessa funzione condivisa da entrambi gli input (fotocamera e galleria): la scelta
+// del sorgente (scatta vs. carica) avviene a monte tramite due pulsanti/input distinti
+// (vedi index.html), non tramite l'attributo "capture", che su alcuni browser (es.
+// Brave) impedisce di aprire la galleria.
+function handleOcrFileSelection(event) {
   const files = Array.from(event.target.files);
   if (files.length === 0) return;
 
@@ -927,7 +1192,9 @@ document.getElementById('ocr-file-input').addEventListener('change', function(ev
     reader.readAsDataURL(file);
   });
   event.target.value = ''; // Reset per permettere ricaricamento
-});
+}
+document.getElementById('ocr-file-input-camera').addEventListener('change', handleOcrFileSelection);
+document.getElementById('ocr-file-input-gallery').addEventListener('change', handleOcrFileSelection);
 
 // 2. Esecuzione OCR
 document.getElementById('btn-run-ocr').addEventListener('click', async () => {
@@ -1038,7 +1305,8 @@ function clearOCR() {
   document.getElementById('ocr-actions').style.display = 'none';
   document.getElementById('ocr-processing').style.display = 'none';
   document.getElementById('ocr-review-section').classList.add('hidden');
-  document.getElementById('ocr-file-input').value = '';
+  document.getElementById('ocr-file-input-camera').value = '';
+  document.getElementById('ocr-file-input-gallery').value = '';
 }
 
 function renderOCRReview() {
