@@ -190,7 +190,8 @@ document.getElementById('txt-file-input').addEventListener('change', function(ev
             cognome: line.substring(14, 64).trim(),
             nome: line.substring(64, 94).trim(),
             data_arrivo: line.substring(2, 12).trim(),
-            selected: true
+            selected: true,
+            source: 'file'
           });
         }
       }
@@ -203,7 +204,7 @@ document.getElementById('txt-file-input').addEventListener('change', function(ev
         const values = parseCSVLine(lines[i], separator);
         if (values.length < 2) continue; // Salta righe vuote o malformate
 
-        const guest = { uiId: `txt-csv-${Date.now()}-${i}`, selected: true };
+        const guest = { uiId: `txt-csv-${Date.now()}-${i}`, selected: true, source: 'file' };
         headers.forEach((header, index) => {
           const key = mapCsvHeader(header);
           if (key && values[index]) {
@@ -229,6 +230,7 @@ document.getElementById('txt-file-input').addEventListener('change', function(ev
     document.getElementById('guest-list-section').classList.remove('hidden');
     renderGuestList();
     updateStats();
+    switchTab('list');
     showStatus(`✅ Importati ${newGuests.length} ospiti dal file`, 'success');
 
     // Resetta l'input per permettere di ricaricare lo stesso file se necessario
@@ -286,6 +288,7 @@ function mapCsvHeader(header) {
 // EVENT LISTENERS PRINCIPALI
 // ============================================================
 function setupEventListeners() {
+  setupTabs();
   document.getElementById('btn-load').addEventListener('click', loadFromSheet);
   document.getElementById('btn-generate').addEventListener('click', generateAndDownloadTXT);
   document.getElementById('btn-test').addEventListener('click', testWithQuestura);
@@ -299,6 +302,27 @@ function setupEventListeners() {
   document.getElementById('edit-guest-overlay').addEventListener('click', (e) => {
     if (e.target.id === 'edit-guest-overlay') closeEditGuest();
   });
+}
+
+// ============================================================
+// GESTIONE TAB (Scansiona / Importa file / Da foglio / Lista ospiti)
+// ============================================================
+function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('hidden', panel.id !== `tab-${tabName}`);
+  });
+  const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
 }
 
 // ============================================================
@@ -567,15 +591,20 @@ async function loadFromSheet() {
       return;
     }
 
-    state.filteredGuests = data.guests.map((guest, index) => ({
+    const sheetGuests = data.guests.map((guest, index) => ({
       ...guest,
-      uiId: `guest-${index}`,
-      selected: true
+      uiId: `guest-${Date.now()}-${index}`,
+      selected: true,
+      source: 'foglio'
     }));
+    // Cumula con eventuali ospiti già presenti (import file, OCR, caricamenti precedenti),
+    // così tutte le fonti confluiscono nella stessa lista in tab "Lista ospiti".
+    state.filteredGuests = [...state.filteredGuests, ...sheetGuests];
 
     document.getElementById('guest-list-section').classList.remove('hidden');
     renderGuestList();
     updateStats();
+    switchTab('list');
     showStatus(`✅ Caricati ${state.filteredGuests.length} ospiti`, 'success');
 
   } catch (error) {
@@ -591,6 +620,8 @@ function renderGuestList() {
   const list = document.getElementById('guest-list');
   list.innerHTML = '';
 
+  const SOURCE_LABELS = { foglio: 'da foglio Google', file: 'da file importato', scansione: 'da scansione', manuale: 'inserito a mano' };
+
   state.filteredGuests.forEach((guest, index) => {
     const card = document.createElement('div');
     card.className = `guest-card ${guest.selected ? '' : 'excluded'}`;
@@ -599,13 +630,16 @@ function renderGuestList() {
     const dataArrivo = String(guest.data_arrivo || '-');
     const cognome = String(guest.cognome || '-');
     const nome = String(guest.nome || '-');
+    const sourceLabel = SOURCE_LABELS[guest.source] || '';
+    const initials = ((cognome[0] || '') + (nome[0] || '')).toUpperCase() || '?';
 
     card.innerHTML = `
-      <label style="flex:1; display:flex; align-items:center; gap:1rem;">
+      <label style="flex:1; display:flex; align-items:center; gap:1rem; min-width:0; cursor:pointer;">
         <input type="checkbox" ${guest.selected ? 'checked' : ''} onchange="toggleGuest(${index})">
+        <div class="guest-avatar">${escapeHtml(initials)}</div>
         <div class="guest-info">
-          <strong>${escapeHtml(cognome)} ${escapeHtml(nome)}</strong>
-          <span>${escapeHtml(tipoAllog)} • Arrivo: ${escapeHtml(dataArrivo)} • Permanenza: ${escapeHtml(String(guest.permanenza || '-'))} gg</span>
+          <div class="guest-name">${escapeHtml(cognome)} ${escapeHtml(nome)}</div>
+          <div class="guest-meta">${escapeHtml(tipoAllog)} • Arrivo: ${escapeHtml(dataArrivo)} • Permanenza: ${escapeHtml(String(guest.permanenza || '-'))} gg${sourceLabel ? ' • <span class="guest-source">' + escapeHtml(sourceLabel) + '</span>' : ''}</div>
         </div>
       </label>
       <div class="guest-card-actions">
@@ -743,6 +777,11 @@ function updateStats() {
   document.getElementById('btn-test').disabled = selected === 0;
   document.getElementById('btn-send').disabled = selected === 0;
   document.getElementById('btn-send-regione').disabled = selected === 0;
+
+  const badge = document.getElementById('tab-badge-list');
+  if (badge) badge.textContent = String(total);
+  const emptyState = document.getElementById('guest-list-empty');
+  if (emptyState) emptyState.classList.toggle('hidden', total > 0);
 }
 
 function clearAll() {
@@ -1232,6 +1271,7 @@ document.getElementById('btn-run-ocr').addEventListener('click', async () => {
   ocrState.confidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : null;
   ocrState.extractedData = ocrResultToAlloggiatoGuest(extractFieldsFromText(combinedText));
   ocrState.phase = 'review';
+  ocrState.source = 'scansione';
 
   document.getElementById('ocr-processing').style.display = 'none';
   renderOCRReview();
@@ -1246,7 +1286,7 @@ document.getElementById('btn-manual-entry').addEventListener('click', () => {
     alert('⚠️ Seleziona prima la struttura di destinazione.');
     return;
   }
-  ocrState = { images: [], phase: 'review', rawText: '', extractedData: {}, confidence: null, error: null, errorDetail: '', strutturaId };
+  ocrState = { images: [], phase: 'review', rawText: '', extractedData: {}, confidence: null, error: null, errorDetail: '', strutturaId, source: 'manuale' };
   document.getElementById('ocr-preview').innerHTML = '';
   document.getElementById('ocr-actions').style.display = 'none';
   document.getElementById('ocr-processing').style.display = 'none';
@@ -1266,6 +1306,7 @@ document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
   const newGuest = {
     uiId: `ocr-${Date.now()}`,
     selected: true,
+    source: ocrState.source === 'manuale' ? 'manuale' : 'scansione',
     struttura_id: selectedStruttura,
     cognome: document.getElementById('ocr-cognome').value.trim().toUpperCase(),
     nome: document.getElementById('ocr-nome').value.trim().toUpperCase(),
@@ -1294,6 +1335,7 @@ document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
   updateStats();
 
   clearOCR();
+  switchTab('list');
   const strutturaNome = STRUTTURE[selectedStruttura] || selectedStruttura;
   showStatus(`✅ Ospite ${newGuest.cognome} ${newGuest.nome} aggiunto per la struttura: ${strutturaNome}`, 'success');
 });
