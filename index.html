@@ -10,28 +10,31 @@
 <div class="app-shell">
 
     <header class="app-header">
-        <div class="app-header-icon">🏨</div>
-        <div class="app-header-text">
-            <h1>Alloggiati Companion</h1>
-            <p>Generatore file TXT per portale Polizia di Stato</p>
-        </div>
+        <div class="app-header-title">Alloggiati Companion</div>
+        <div class="app-header-sub" id="header-subtitle">Seleziona una struttura</div>
     </header>
 
     <nav class="tabs" id="app-tabs">
         <button type="button" class="tab-btn active" data-tab="scan">
-            <span class="tab-icon">📸</span> Scansiona documento
+            <i class="tab-icon">📸</i>
+            <span class="tab-label">Scansiona</span>
         </button>
         <button type="button" class="tab-btn" data-tab="companion">
-            <span class="tab-icon">📥</span> Da Companion
+            <i class="tab-icon">📥</i>
+            <span class="tab-label">Companion</span>
         </button>
         <button type="button" class="tab-btn" data-tab="import">
-            <span class="tab-icon">📂</span> Importa file
+            <i class="tab-icon">📂</i>
+            <span class="tab-label">Importa</span>
         </button>
         <button type="button" class="tab-btn" data-tab="list">
-            <span class="tab-icon">👥</span> Lista ospiti <span class="tab-badge" id="tab-badge-list">0</span>
+            <i class="tab-icon">👥</i>
+            <span class="tab-label">Ospiti</span>
+            <span class="tab-badge" id="tab-badge-list">0</span>
         </button>
         <button type="button" class="tab-btn" data-tab="send">
-            <span class="tab-icon">📤</span> Invia
+            <i class="tab-icon">📤</i>
+            <span class="tab-label">Invia</span>
         </button>
     </nav>
 

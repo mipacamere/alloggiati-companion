@@ -289,6 +289,7 @@ function mapCsvHeader(header) {
 // ============================================================
 function setupEventListeners() {
   setupTabs();
+  setupHeaderStructureSync();
   document.getElementById('btn-load').addEventListener('click', loadFromSheet);
   document.getElementById('btn-generate').addEventListener('click', generateAndDownloadTXT);
   document.getElementById('btn-test').addEventListener('click', testWithQuestura);
@@ -322,6 +323,18 @@ function switchTab(tabName) {
   });
   const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
   if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+}
+
+function setupHeaderStructureSync() {
+  const sub = document.getElementById('header-subtitle');
+  if (!sub) return;
+  const updateFrom = (value) => {
+    sub.textContent = value && STRUTTURE[value] ? `${STRUTTURE[value]} (${value})` : 'Seleziona una struttura';
+  };
+  ['ocr-struttura-capture', 'structure-filter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => updateFrom(el.value));
+  });
 }
 
 // ============================================================
