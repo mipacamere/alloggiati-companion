@@ -274,6 +274,25 @@ select { cursor: pointer; }
     font-weight: 500;
     font-size: 13.5px;
 }
+#ocr-confidence-note {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-bottom: 15px;
+}
+#ocr-error-note {
+    font-size: 12.5px;
+    color: var(--danger-text);
+    background: var(--danger-bg);
+    border: 1px solid #4a2020;
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-bottom: 15px;
+}
 
 /* Stats */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.25rem; }

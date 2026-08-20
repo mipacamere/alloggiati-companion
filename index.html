@@ -21,20 +21,24 @@
         <button type="button" class="tab-btn active" data-tab="scan">
             <span class="tab-icon">📸</span> Scansiona documento
         </button>
+        <button type="button" class="tab-btn" data-tab="companion">
+            <span class="tab-icon">📥</span> Da Companion
+        </button>
         <button type="button" class="tab-btn" data-tab="import">
             <span class="tab-icon">📂</span> Importa file
         </button>
-        <button type="button" class="tab-btn" data-tab="sheet">
-            <span class="tab-icon">📥</span> Da foglio
-        </button>
         <button type="button" class="tab-btn" data-tab="list">
             <span class="tab-icon">👥</span> Lista ospiti <span class="tab-badge" id="tab-badge-list">0</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="send">
+            <span class="tab-icon">📤</span> Invia
         </button>
     </nav>
 
     <main>
 
-        <!-- ===================== TAB: SCANSIONA DOCUMENTO ===================== -->
+        <!-- ===================== TAB: SCANSIONA DOCUMENTO (OCR) ===================== -->
+        <!-- Markup e logica identici all'originale: solo classi CSS al posto di stili inline. -->
         <section class="tab-panel" id="tab-scan">
 
             <div class="card">
@@ -43,6 +47,7 @@
                     <div class="card-desc">Scatta una foto o carica un'immagine del documento. I dati verranno estratti automaticamente.</div>
                 </div>
 
+                <!-- SELETTORE STRUTTURA (PRIMA DELLA SCANSIONE) -->
                 <div class="highlight-box">
                     <label for="ocr-struttura-capture">🏢 Struttura di destinazione</label>
                     <select id="ocr-struttura-capture">
@@ -52,6 +57,7 @@
                     </select>
                 </div>
 
+                <!-- Informativa privacy OCR: stesso contenuto/logica di MiPA Companion -->
                 <div class="info-box">
                     <span>Le foto vengono elaborate da Google Cloud Vision, un servizio OCR di terze parti: il risultato può contenere errori e va sempre verificato. Se preferisci evitarlo, usa "Compila manualmente".</span>
                     <details>
@@ -93,8 +99,8 @@
             <div id="ocr-review-section" class="card hidden">
                 <div class="card-title" style="margin-bottom: 4px;">📝 Revisiona Dati Estratti</div>
                 <p class="card-desc" style="margin-bottom: 15px;">Verifica e correggi i campi prima di aggiungere l'ospite alla lista.</p>
-                <div id="ocr-confidence-note" class="info-box info-blue" style="display:none;"></div>
-                <div id="ocr-error-note" class="info-box" style="display:none; background: var(--danger-bg); border-color:#4a2020; color: var(--danger-text);"></div>
+                <div id="ocr-confidence-note" style="display:none;"></div>
+                <div id="ocr-error-note" style="display:none;"></div>
 
                 <div class="section-label">🏨 Soggiorno</div>
                 <div class="form-grid">
@@ -175,27 +181,12 @@
             </div>
         </section>
 
-        <!-- ===================== TAB: IMPORTA FILE ===================== -->
-        <section class="tab-panel hidden" id="tab-import">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">📂</div>
-                    <div class="card-desc">Importa un file TXT (formato fisso Alloggiati Web, 168 caratteri) oppure un CSV/TSV con intestazioni.</div>
-                </div>
-                <input type="file" id="txt-file-input" accept=".txt,.csv,.tsv" style="display: none;" />
-                <button type="button" id="btn-import-txt" class="btn btn-primary" onclick="document.getElementById('txt-file-input').click()">
-                    📂 Importa da TXT/CSV
-                </button>
-                <span id="txt-file-name" class="file-name-tag"></span>
-            </div>
-        </section>
-
-        <!-- ===================== TAB: DA FOGLIO ===================== -->
-        <section class="tab-panel hidden" id="tab-sheet">
+        <!-- ===================== TAB: DA COMPANION (Google Sheet) ===================== -->
+        <section class="tab-panel hidden" id="tab-companion">
             <div class="card">
                 <div class="card-header">
                     <div class="card-icon">📥</div>
-                    <div class="card-desc">Carica gli ospiti già registrati sul foglio Google collegato alla struttura.</div>
+                    <div class="card-desc">Carica gli ospiti già registrati sul foglio Google (Companion) collegato alla struttura.</div>
                 </div>
                 <div class="form-grid">
                     <div class="field">
@@ -218,7 +209,22 @@
             </div>
         </section>
 
-        <!-- ===================== TAB: LISTA OSPITI ===================== -->
+        <!-- ===================== TAB: IMPORTA FILE ===================== -->
+        <section class="tab-panel hidden" id="tab-import">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">📂</div>
+                    <div class="card-desc">Importa un file TXT (formato fisso Alloggiati Web, 168 caratteri) oppure un CSV/TSV con intestazioni.</div>
+                </div>
+                <input type="file" id="txt-file-input" accept=".txt,.csv,.tsv" style="display: none;" />
+                <button type="button" id="btn-import-txt" class="btn btn-primary" onclick="document.getElementById('txt-file-input').click()">
+                    📂 Importa da TXT/CSV
+                </button>
+                <span id="txt-file-name" class="file-name-tag"></span>
+            </div>
+        </section>
+
+        <!-- ===================== TAB: LISTA OSPITI (cumulativa tra tutte le fonti) ===================== -->
         <section class="tab-panel hidden" id="tab-list">
 
             <section id="guest-list-section" class="hidden">
@@ -246,43 +252,60 @@
 
                 <div class="actions">
                     <button type="button" id="btn-generate" class="btn btn-primary" disabled>📄 Genera File TXT</button>
-                    <button type="button" id="btn-test" class="btn btn-secondary" disabled>🔎 Convalida con la Questura (Test)</button>
-                    <button type="button" id="btn-send" class="btn btn-danger" disabled>🚨 Invia REALMENTE alla Questura</button>
                     <button type="button" id="btn-clear" class="btn btn-secondary">🗑️ Svuota Lista</button>
-                </div>
-
-                <div id="questura-result"></div>
-
-                <!-- SEZIONE INVIO REGIONE SICILIA (Osservatorio Turistico, fini statistici ISTAT) -->
-                <div class="card card-region">
-                    <div class="card-header">
-                        <div class="card-icon">📊</div>
-                        <div class="card-title">Regione Sicilia — Osservatorio Turistico (dati statistici)</div>
-                    </div>
-                    <p class="card-desc" style="margin-bottom: 12px;">
-                        Invia gli ospiti selezionati anche all'Osservatorio Turistico della Regione Siciliana
-                        (piattaforma Turist@t), l'adempimento statistico ISTAT distinto e aggiuntivo rispetto
-                        all'invio alla Questura.
-                    </p>
-                    <div class="info-box">
-                        <strong>Nota sui dati inviati:</strong> il tracciato della Regione richiede anche il
-                        "Comune/Stato di residenza" dell'ospite, dato che questa app non raccoglie (non è
-                        previsto dal tracciato Alloggiati Web). Per non bloccare l'invio, questo campo viene
-                        impostato automaticamente uguale al luogo di nascita: è un'approssimazione, non il dato
-                        reale di residenza. Verifica se questo è accettabile per la tua struttura prima di
-                        procedere.
-                    </div>
-                    <button type="button" id="btn-send-regione" class="btn btn-primary" disabled>
-                        📊 Invia Dati alla Regione (Osservatorio Turistico Sicilia)
-                    </button>
-                    <div id="regione-result"></div>
                 </div>
             </section>
 
             <div id="guest-list-empty" class="card" style="text-align:center; color: var(--text-secondary);">
-                Nessun ospite in lista. Usa una delle altre tab per scansionare un documento, importare un file o caricare dal foglio Google.
+                Nessun ospite in lista. Usa una delle altre tab per scansionare un documento, caricare da Companion o importare un file: gli ospiti da tutte le fonti si accumulano qui.
             </div>
 
+        </section>
+
+        <!-- ===================== TAB: INVIA (Questura + Regione) ===================== -->
+        <!-- Logica di invio/test identica all'originale: solo riposizionata in una tab dedicata. -->
+        <section class="tab-panel hidden" id="tab-send">
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">🚔</div>
+                    <div class="card-title">Invio alla Questura</div>
+                </div>
+                <p class="card-desc" style="margin-bottom: 12px;">
+                    Convalida i dati con un invio di test, poi procedi con l'invio reale alla Questura.
+                    Le azioni riguardano gli ospiti selezionati nella tab "Lista ospiti".
+                </p>
+                <div class="btn-row">
+                    <button type="button" id="btn-test" class="btn btn-secondary" disabled>🔎 Convalida con la Questura (Test)</button>
+                    <button type="button" id="btn-send" class="btn btn-danger" disabled>🚨 Invia REALMENTE alla Questura</button>
+                </div>
+                <div id="questura-result"></div>
+            </div>
+
+            <!-- SEZIONE INVIO REGIONE SICILIA (Osservatorio Turistico, fini statistici ISTAT) -->
+            <div class="card card-region">
+                <div class="card-header">
+                    <div class="card-icon">📊</div>
+                    <div class="card-title">Regione Sicilia — Osservatorio Turistico (dati statistici)</div>
+                </div>
+                <p class="card-desc" style="margin-bottom: 12px;">
+                    Invia gli ospiti selezionati anche all'Osservatorio Turistico della Regione Siciliana
+                    (piattaforma Turist@t), l'adempimento statistico ISTAT distinto e aggiuntivo rispetto
+                    all'invio alla Questura.
+                </p>
+                <div class="info-box">
+                    <strong>Nota sui dati inviati:</strong> il tracciato della Regione richiede anche il
+                    "Comune/Stato di residenza" dell'ospite, dato che questa app non raccoglie (non è
+                    previsto dal tracciato Alloggiati Web). Per non bloccare l'invio, questo campo viene
+                    impostato automaticamente uguale al luogo di nascita: è un'approssimazione, non il dato
+                    reale di residenza. Verifica se questo è accettabile per la tua struttura prima di
+                    procedere.
+                </div>
+                <button type="button" id="btn-send-regione" class="btn btn-primary" disabled>
+                    📊 Invia Dati alla Regione (Osservatorio Turistico Sicilia)
+                </button>
+                <div id="regione-result"></div>
+            </div>
         </section>
 
         <!-- Sezione Messaggi -->
@@ -293,7 +316,7 @@
 
 <!-- MODALE MODIFICA OSPITE -->
 <!-- Permette di correggere i dati di QUALSIASI ospite in lista, indipendentemente
-     da come è stato acquisito (foglio Google, import TXT/CSV, OCR), prima di
+     da come è stato acquisito (Companion, import TXT/CSV, OCR), prima di
      generare il file o inviarlo alla Questura. -->
 <div id="edit-guest-overlay" class="modal-overlay hidden">
   <div class="modal-box">

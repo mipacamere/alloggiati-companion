@@ -305,11 +305,10 @@ function setupEventListeners() {
 }
 
 // ============================================================
-// GESTIONE TAB (Scansiona / Importa file / Da foglio / Lista ospiti)
+// GESTIONE TAB (Scansiona / Da Companion / Importa file / Lista ospiti / Invia)
 // ============================================================
 function setupTabs() {
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  tabButtons.forEach(btn => {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 }
@@ -595,17 +594,17 @@ async function loadFromSheet() {
       ...guest,
       uiId: `guest-${Date.now()}-${index}`,
       selected: true,
-      source: 'foglio'
+      source: 'companion'
     }));
-    // Cumula con eventuali ospiti già presenti (import file, OCR, caricamenti precedenti),
-    // così tutte le fonti confluiscono nella stessa lista in tab "Lista ospiti".
+    // Cumula con eventuali ospiti già presenti (import file, OCR, caricamenti precedenti):
+    // tutte le fonti confluiscono nella stessa lista, come richiesto.
     state.filteredGuests = [...state.filteredGuests, ...sheetGuests];
 
     document.getElementById('guest-list-section').classList.remove('hidden');
     renderGuestList();
     updateStats();
     switchTab('list');
-    showStatus(`✅ Caricati ${state.filteredGuests.length} ospiti`, 'success');
+    showStatus(`✅ Caricati ${sheetGuests.length} ospiti`, 'success');
 
   } catch (error) {
     console.error('Errore caricamento:', error);
@@ -620,7 +619,7 @@ function renderGuestList() {
   const list = document.getElementById('guest-list');
   list.innerHTML = '';
 
-  const SOURCE_LABELS = { foglio: 'da foglio Google', file: 'da file importato', scansione: 'da scansione', manuale: 'inserito a mano' };
+  const SOURCE_LABELS = { companion: 'da Companion', file: 'da file importato', scansione: 'da scansione', manuale: 'inserito a mano' };
 
   state.filteredGuests.forEach((guest, index) => {
     const card = document.createElement('div');
@@ -638,8 +637,8 @@ function renderGuestList() {
         <input type="checkbox" ${guest.selected ? 'checked' : ''} onchange="toggleGuest(${index})">
         <div class="guest-avatar">${escapeHtml(initials)}</div>
         <div class="guest-info">
-          <div class="guest-name">${escapeHtml(cognome)} ${escapeHtml(nome)}</div>
-          <div class="guest-meta">${escapeHtml(tipoAllog)} • Arrivo: ${escapeHtml(dataArrivo)} • Permanenza: ${escapeHtml(String(guest.permanenza || '-'))} gg${sourceLabel ? ' • <span class="guest-source">' + escapeHtml(sourceLabel) + '</span>' : ''}</div>
+          <strong>${escapeHtml(cognome)} ${escapeHtml(nome)}</strong>
+          <span>${escapeHtml(tipoAllog)} • Arrivo: ${escapeHtml(dataArrivo)} • Permanenza: ${escapeHtml(String(guest.permanenza || '-'))} gg${sourceLabel ? ' • <span class="guest-source">' + escapeHtml(sourceLabel) + '</span>' : ''}</span>
         </div>
       </label>
       <div class="guest-card-actions">
@@ -1271,7 +1270,6 @@ document.getElementById('btn-run-ocr').addEventListener('click', async () => {
   ocrState.confidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : null;
   ocrState.extractedData = ocrResultToAlloggiatoGuest(extractFieldsFromText(combinedText));
   ocrState.phase = 'review';
-  ocrState.source = 'scansione';
 
   document.getElementById('ocr-processing').style.display = 'none';
   renderOCRReview();
@@ -1286,7 +1284,7 @@ document.getElementById('btn-manual-entry').addEventListener('click', () => {
     alert('⚠️ Seleziona prima la struttura di destinazione.');
     return;
   }
-  ocrState = { images: [], phase: 'review', rawText: '', extractedData: {}, confidence: null, error: null, errorDetail: '', strutturaId, source: 'manuale' };
+  ocrState = { images: [], phase: 'review', rawText: '', extractedData: {}, confidence: null, error: null, errorDetail: '', strutturaId };
   document.getElementById('ocr-preview').innerHTML = '';
   document.getElementById('ocr-actions').style.display = 'none';
   document.getElementById('ocr-processing').style.display = 'none';
@@ -1306,7 +1304,7 @@ document.getElementById('btn-add-ocr-guest').addEventListener('click', () => {
   const newGuest = {
     uiId: `ocr-${Date.now()}`,
     selected: true,
-    source: ocrState.source === 'manuale' ? 'manuale' : 'scansione',
+    source: ocrState.images && ocrState.images.length > 0 ? 'scansione' : 'manuale',
     struttura_id: selectedStruttura,
     cognome: document.getElementById('ocr-cognome').value.trim().toUpperCase(),
     nome: document.getElementById('ocr-nome').value.trim().toUpperCase(),
